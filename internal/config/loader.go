@@ -11,10 +11,16 @@ import (
 func Load(ctx context.Context, eval *nix.Evaluator) (*Config, error) {
 	var cfg Config
 
-	// Try nixTasksConfig first (flake output)
-	err := eval.Eval(ctx, "nixTasksConfig", &cfg)
+	system := nix.CurrentSystem()
+
+	// Try system-specific nixTasksConfig first (e.g., nixTasksConfig.aarch64-darwin)
+	err := eval.Eval(ctx, fmt.Sprintf("nixTasksConfig.%s", system), &cfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to evaluate nixTasksConfig: %w", err)
+		// Fall back to non-system-specific nixTasksConfig
+		err = eval.Eval(ctx, "nixTasksConfig", &cfg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to evaluate nixTasksConfig: %w", err)
+		}
 	}
 
 	// Initialize empty maps if nil

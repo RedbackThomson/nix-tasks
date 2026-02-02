@@ -7,8 +7,35 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"runtime"
 	"strings"
 )
+
+// CurrentSystem returns the Nix system identifier for the current platform
+func CurrentSystem() string {
+	arch := runtime.GOARCH
+	os := runtime.GOOS
+
+	// Map Go arch to Nix arch
+	nixArch := arch
+	switch arch {
+	case "amd64":
+		nixArch = "x86_64"
+	case "arm64":
+		nixArch = "aarch64"
+	}
+
+	// Map Go OS to Nix OS
+	nixOS := os
+	switch os {
+	case "darwin":
+		nixOS = "darwin"
+	case "linux":
+		nixOS = "linux"
+	}
+
+	return fmt.Sprintf("%s-%s", nixArch, nixOS)
+}
 
 // Evaluator wraps Nix CLI operations
 type Evaluator struct {

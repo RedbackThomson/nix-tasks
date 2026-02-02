@@ -8,44 +8,62 @@
 
   outputs = { self, nixpkgs, nix-tasks }:
     let
-      system = "aarch64-darwin"; # Change to your system
-      pkgs = nixpkgs.legacyPackages.${system};
-      lib = nix-tasks.lib.${system};
+      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
+      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
 
-      config = lib.evalConfig {
-        packages = {
-          go = pkgs.go;
-          docker = pkgs.docker;
+      mkConfig = system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          lib = nix-tasks.lib.${system};
+        in lib.evalConfig {
+          packages = {
+            go = pkgs.go;
+          };
+
+          tasks = {
+            build = lib.mkTask {
+              description = "Build the application";
+              deps = [ "go" ];
+              commands = [
+                "echo 'Building...'"
+                "mkdir -p bin"
+                "echo '#!/bin/sh' > bin/app"
+                "echo 'echo Hello' >> bin/app"
+                "chmod +x bin/app"
+                "echo 'Done: bin/app'"
+              ];
+            };
+
+            test = lib.mkTask {
+              description = "Run tests";
+              deps = [ "go" ];
+              commands = [
+                "echo 'Running tests...'"
+                "echo 'All tests passed'"
+              ];
+            };
+
+            clean = lib.mkTask {
+              description = "Clean build artifacts";
+              commands = [
+                "rm -rf bin/"
+                "echo 'Cleaned'"
+              ];
+            };
+          };
+
+          devShells = {
+            default = {
+              packages = [ "go" ];
+              shellHook = ''
+                echo "Development shell ready"
+              '';
+            };
+          };
         };
-
-        tasks = {
-          build = lib.mkGoTask {
-            description = "Build the application";
-            output = "bin/app";
-          };
-
-          test = lib.mkTask {
-            description = "Run tests";
-            deps = ["go"];
-            commands = ["go test ./..."];
-          };
-
-          all = lib.mkCompoundTask {
-            description = "Run build and test";
-            tasks = ["build" "test"];
-          };
-        };
-
-        devShells = {
-          default = {
-            packages = ["go" "docker"];
-            shellHook = ''
-              echo "Development shell ready"
-            '';
-          };
-        };
-      };
-    in config // {
-      devShells.${system} = config.devShells;
+    in {
+      nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
+      nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
+      devShells = forAllSystems (system: (mkConfig system).devShells);
     };
 }

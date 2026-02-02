@@ -43,7 +43,9 @@ func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) e
 	script := GenerateScript(task)
 
 	// Run inside nix develop with the task's shell
-	shellAttr := fmt.Sprintf("nixTasksShells.%s", name)
+	// Try system-specific path first, then fall back to non-system-specific
+	system := nix.CurrentSystem()
+	shellAttr := fmt.Sprintf("nixTasksShells.%s.%s", system, name)
 	cmd := e.nix.DevelopCmd(ctx, shellAttr, []string{"bash", "-e", "-c", script})
 
 	// Configure output

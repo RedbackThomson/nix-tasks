@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-
 	"github.com/alecthomas/kong"
 
 	"github.com/redbackthomson/nix-tasks/internal/cli"
@@ -16,7 +14,5 @@ func main() {
 		kong.UsageOnError(),
 	)
 	err := ctx.Run(&rootCmd.Globals)
-	if err != nil {
-		os.Exit(1)
-	}
+	ctx.FatalIfErrorf(err)
 }
