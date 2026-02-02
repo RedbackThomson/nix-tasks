@@ -1,0 +1,33 @@
+# Build outputs
+/nix-tasks
+/bin/
+/result
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+go.work.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Nix
+result
+result-*
+
+# Cache
+.cache/

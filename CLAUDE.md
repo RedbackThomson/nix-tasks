@@ -2,6 +2,11 @@
 
 This document provides guidelines for Claude when implementing the nix-tasks project.
 
+## Other Documents
+
+- Implementation Plan - `./docs/implementation-plan.md`
+- Requirements - `./docs/requirements.md`
+
 ## Project Summary
 
 ### What We're Building
