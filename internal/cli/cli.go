@@ -12,7 +12,8 @@ type CLI struct {
 	Globals
 
 	Run      RunCmd      `cmd:"" help:"Run a task"`
-	List     ListCmd     `cmd:"" help:"List available tasks"`
+	List     ListCmd     `cmd:"" help:"List available tasks and shells"`
 	Describe DescribeCmd `cmd:"" help:"Show task details"`
+	Shell    ShellCmd    `cmd:"" help:"Enter a development shell"`
 	Validate ValidateCmd `cmd:"" help:"Validate configuration"`
 }

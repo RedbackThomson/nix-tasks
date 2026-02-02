@@ -26,6 +26,7 @@ func (c *ListCmd) Run(globals *Globals) error {
 
 	printer := ui.NewPrinter()
 	printer.PrintTaskList(cfg.Tasks)
+	printer.PrintShellList(cfg.DevShells)
 
 	return nil
 }

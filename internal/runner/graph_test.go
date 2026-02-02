@@ -16,8 +16,8 @@ func TestNewTaskGraph(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name: "empty graph",
-			tasks: map[string]config.Task{},
+			name:    "empty graph",
+			tasks:   map[string]config.Task{},
 			wantErr: false,
 		},
 		{
@@ -81,10 +81,10 @@ func TestNewTaskGraph(t *testing.T) {
 		{
 			name: "diamond dependency (no cycle)",
 			tasks: map[string]config.Task{
-				"a":    {},
-				"b":    {Depends: []string{"task:a"}},
-				"c":    {Depends: []string{"task:a"}},
-				"d":    {Depends: []string{"task:b", "task:c"}},
+				"a": {},
+				"b": {Depends: []string{"task:a"}},
+				"c": {Depends: []string{"task:a"}},
+				"d": {Depends: []string{"task:b", "task:c"}},
 			},
 			wantErr: false,
 		},
@@ -108,13 +108,13 @@ func TestNewTaskGraph(t *testing.T) {
 
 func TestTaskGraph_ExecutionOrder(t *testing.T) {
 	tests := []struct {
-		name       string
-		tasks      map[string]config.Task
-		target     string
-		wantLen    int
-		wantFirst  string
-		wantLast   string
-		wantErr    bool
+		name      string
+		tasks     map[string]config.Task
+		target    string
+		wantLen   int
+		wantFirst string
+		wantLast  string
+		wantErr   bool
 	}{
 		{
 			name: "single task",
@@ -272,10 +272,10 @@ func TestTaskGraph_ParallelGroups(t *testing.T) {
 
 func TestTaskGraph_ParallelGroupsContent(t *testing.T) {
 	tasks := map[string]config.Task{
-		"base":   {},
-		"left":   {Depends: []string{"task:base"}},
-		"right":  {Depends: []string{"task:base"}},
-		"top":    {Depends: []string{"task:left", "task:right"}},
+		"base":  {},
+		"left":  {Depends: []string{"task:base"}},
+		"right": {Depends: []string{"task:base"}},
+		"top":   {Depends: []string{"task:left", "task:right"}},
 	}
 
 	graph, err := runner.NewTaskGraph(tasks)
