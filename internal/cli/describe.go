@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
+	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
 // DescribeCmd shows task details
@@ -32,25 +34,26 @@ func (c *DescribeCmd) Run(globals *Globals) error {
 	}
 
 	// Print detailed task information
-	fmt.Printf("Task: %s\n", c.Task)
+	fmt.Printf("%s %s\n", ui.Blue("Task:"), c.Task)
 	fmt.Println()
 
 	if task.Description != "" {
-		fmt.Printf("Description:\n  %s\n\n", task.Description)
+		fmt.Printf("%s\n  %s\n\n", ui.Blue("Description:"), task.Description)
 	}
 
 	if len(task.Deps) > 0 {
-		fmt.Println("Packages:")
+		fmt.Printf("%s\n", ui.Blue("Packages:"))
 		for _, dep := range task.Deps {
-			fmt.Printf("  - %s\n", dep)
+			fmt.Printf("  %s %s\n", ui.Gray("-"), dep)
 		}
 		fmt.Println()
 	}
 
 	if len(task.Depends) > 0 {
-		fmt.Println("Depends on:")
+		fmt.Printf("%s\n", ui.Blue("Depends on:"))
 		for _, dep := range task.Depends {
-			fmt.Printf("  - %s\n", dep)
+			depName := strings.TrimPrefix(dep, "task:")
+			fmt.Printf("  %s %s\n", ui.Gray("-"), depName)
 		}
 		fmt.Println()
 	}
@@ -58,25 +61,39 @@ func (c *DescribeCmd) Run(globals *Globals) error {
 	// Find tasks that depend on this one
 	dependents := findDependents(c.Task, cfg.Tasks)
 	if len(dependents) > 0 {
-		fmt.Println("Depended on by:")
+		fmt.Printf("%s\n", ui.Blue("Depended on by:"))
 		for _, dep := range dependents {
-			fmt.Printf("  - %s\n", dep)
+			fmt.Printf("  %s %s\n", ui.Gray("-"), dep)
 		}
 		fmt.Println()
 	}
 
 	if len(task.Inputs) > 0 {
-		fmt.Println("Inputs:")
+		fmt.Printf("%s\n", ui.Blue("Inputs:"))
 		for _, input := range task.Inputs {
-			fmt.Printf("  - %s\n", input)
+			fmt.Printf("  %s %s\n", ui.Gray("-"), input)
 		}
 		fmt.Println()
 	}
 
 	if len(task.Outputs) > 0 {
-		fmt.Println("Outputs:")
+		fmt.Printf("%s\n", ui.Blue("Outputs:"))
 		for _, output := range task.Outputs {
-			fmt.Printf("  - %s\n", output)
+			fmt.Printf("  %s %s\n", ui.Gray("-"), output)
+		}
+	}
+
+	// Show commands if verbose
+	if len(task.Commands) > 0 {
+		fmt.Printf("%s\n", ui.Blue("Commands:"))
+		for _, cmd := range task.Commands {
+			fmt.Printf("  %s\n", ui.Gray(cmd))
+		}
+	} else if task.Script != "" {
+		fmt.Printf("%s\n", ui.Blue("Script:"))
+		lines := strings.Split(task.Script, "\n")
+		for _, line := range lines {
+			fmt.Printf("  %s\n", ui.Gray(line))
 		}
 	}
 

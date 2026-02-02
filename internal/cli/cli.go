@@ -11,10 +11,12 @@ type Globals struct {
 type CLI struct {
 	Globals
 
-	Run      RunCmd      `cmd:"" help:"Run a task"`
-	List     ListCmd     `cmd:"" help:"List available tasks and shells"`
-	Describe DescribeCmd `cmd:"" help:"Show task details"`
-	Shell    ShellCmd    `cmd:"" help:"Enter a development shell"`
-	Cache    CacheCmd    `cmd:"" help:"Cache management commands"`
-	Validate ValidateCmd `cmd:"" help:"Validate configuration"`
+	Run         RunCmd         `cmd:"" help:"Run a task"`
+	List        ListCmd        `cmd:"" help:"List available tasks and shells"`
+	Describe    DescribeCmd    `cmd:"" help:"Show task details"`
+	Shell       ShellCmd       `cmd:"" help:"Enter a development shell"`
+	Cache       CacheCmd       `cmd:"" help:"Cache management commands"`
+	Validate    ValidateCmd    `cmd:"" help:"Validate configuration"`
+	TUI         TUICmd         `cmd:"" default:"withargs" help:"Launch interactive TUI (default)"`
+	Completions CompletionsCmd `cmd:"" help:"Generate shell completions"`
 }
