@@ -41,13 +41,21 @@ func nixTasksBinary(t *testing.T) string {
 }
 
 // runNixTasks runs nix-tasks with the given arguments and returns stdout, stderr, and error
+// Each call gets a fresh cache directory to avoid test interference
 func runNixTasks(t *testing.T, binary string, args ...string) (string, string, error) {
+	t.Helper()
+	return runNixTasksWithCacheDir(t, binary, t.TempDir(), args...)
+}
+
+// runNixTasksWithCacheDir runs nix-tasks with a specific cache directory
+func runNixTasksWithCacheDir(t *testing.T, binary, cacheDir string, args ...string) (string, string, error) {
 	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd.Env = append(cmd.Environ(), "NIX_TASKS_CACHE_DIR="+cacheDir)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -722,5 +730,152 @@ func TestRun_StreamFlag(t *testing.T) {
 	// With --stream, output should include the task output with prefixes
 	if !strings.Contains(stdout, "Line 1") {
 		t.Errorf("expected streaming output with 'Line 1', got: %s", stdout)
+	}
+}
+
+// =============================================================================
+// Cache Tests
+// =============================================================================
+
+func TestRun_CachesResults(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "simple")
+
+	// Use a shared cache directory for this test
+	cacheDir := t.TempDir()
+
+	// First run should execute the task
+	stdout1, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("first run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Should not say cached
+	if strings.Contains(stdout1, "(cached)") {
+		t.Errorf("first run should not be cached, got: %s", stdout1)
+	}
+
+	// Second run should use cache
+	stdout2, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("second run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Should say cached
+	if !strings.Contains(stdout2, "(cached)") {
+		t.Errorf("second run should be cached, got: %s", stdout2)
+	}
+}
+
+func TestRun_ForceBypassesCache(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "simple")
+
+	// Use a shared cache directory for this test
+	cacheDir := t.TempDir()
+
+	// First run to populate cache
+	_, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("first run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Run with --force should not use cache
+	stdout, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath, "--force")
+	if err != nil {
+		t.Fatalf("force run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Should not say cached
+	if strings.Contains(stdout, "(cached)") {
+		t.Errorf("--force should bypass cache, got: %s", stdout)
+	}
+}
+
+func TestRun_NoCacheDisablesCaching(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "simple")
+
+	// Use a shared cache directory for this test
+	cacheDir := t.TempDir()
+
+	// Run twice with --no-cache
+	for i := 0; i < 2; i++ {
+		stdout, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath, "--no-cache")
+		if err != nil {
+			t.Fatalf("run %d failed: %v\nstderr: %s", i+1, err, stderr)
+		}
+
+		// Should not say cached
+		if strings.Contains(stdout, "(cached)") {
+			t.Errorf("--no-cache run %d should not be cached, got: %s", i+1, stdout)
+		}
+	}
+}
+
+func TestCache_Clean(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "simple")
+
+	// Use a shared cache directory for this test
+	cacheDir := t.TempDir()
+
+	// First run to populate cache
+	_, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("first run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Clean the cache
+	stdout, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "cache", "clean", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("cache clean failed: %v\nstderr: %s", err, stderr)
+	}
+
+	if !strings.Contains(stdout, "Cache cleared") {
+		t.Errorf("expected 'Cache cleared' message, got: %s", stdout)
+	}
+
+	// Run again should not be cached
+	stdout, stderr, err = runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("run after clean failed: %v\nstderr: %s", err, stderr)
+	}
+
+	if strings.Contains(stdout, "(cached)") {
+		t.Errorf("run after cache clean should not be cached, got: %s", stdout)
+	}
+}
+
+func TestCache_Stats(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "simple")
+
+	// Use a shared cache directory for this test
+	cacheDir := t.TempDir()
+
+	// Run a task to populate cache
+	_, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Get cache stats
+	stdout, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "cache", "stats", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("cache stats failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Should show statistics
+	if !strings.Contains(stdout, "Cache Statistics") {
+		t.Errorf("expected 'Cache Statistics' in output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Entries:") {
+		t.Errorf("expected 'Entries:' in output, got: %s", stdout)
 	}
 }

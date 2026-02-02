@@ -3,10 +3,12 @@ package runner
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
 
+	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
 	"github.com/redbackthomson/nix-tasks/internal/ui"
@@ -27,6 +29,7 @@ type ParallelExecutor struct {
 	config   *config.Config
 	options  ExecutorOptions
 	printer  *ui.Printer
+	cache    *cache.Store
 	maxJobs  int
 	strategy FailureStrategy
 }
@@ -49,11 +52,19 @@ func NewParallelExecutor(
 		maxJobs = 4 // Default parallelism
 	}
 	eval.SetDebug(execOpts.Debug)
+
+	// Initialize cache store if caching is enabled
+	var cacheStore *cache.Store
+	if !execOpts.NoCache && execOpts.ProjectKey != "" {
+		cacheStore = cache.NewStore(execOpts.ProjectKey)
+	}
+
 	return &ParallelExecutor{
 		nix:      eval,
 		config:   cfg,
 		options:  execOpts,
 		printer:  ui.NewPrinter(),
+		cache:    cacheStore,
 		maxJobs:  maxJobs,
 		strategy: parallelOpts.Strategy,
 	}
@@ -164,12 +175,13 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 
 			// Execute task with timing
 			start := time.Now()
-			err := p.runTask(ctx, taskName, task)
+			cached, err := p.runTask(ctx, taskName, task)
 			duration := time.Since(start)
 
 			results[idx] = TaskResult{
 				Name:     taskName,
 				Success:  err == nil,
+				Cached:   cached,
 				Error:    err,
 				Duration: duration,
 			}
@@ -181,7 +193,29 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 }
 
 // runTask executes a single task (similar to Executor.RunTask but with duration tracking)
-func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config.Task) error {
+func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config.Task) (cached bool, err error) {
+	// Compute fingerprint for caching
+	var fp *cache.Fingerprint
+	if p.cache != nil {
+		var fpErr error
+		fp, fpErr = cache.ComputeFingerprint(task, p.config.Packages, task.WorkingDir)
+		if fpErr != nil {
+			slog.Debug("failed to compute fingerprint", "task", name, "error", fpErr)
+			// Continue without caching
+		}
+	}
+
+	// Check cache if not forcing rebuild
+	if fp != nil && !p.options.Force {
+		if entry, ok := p.cache.Lookup(name, fp); ok {
+			p.printer.TaskCached(name)
+			if !entry.Success {
+				return true, &TaskExecutionError{Name: name, Err: fmt.Errorf("failed (cached)")}
+			}
+			return true, nil
+		}
+	}
+
 	p.printer.TaskStarted(name)
 
 	// Generate the script to run
@@ -217,21 +251,28 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 
 	// Execute
 	start := time.Now()
-	err := cmd.Run()
+	execErr := cmd.Run()
 	duration := time.Since(start)
 
-	if err != nil {
+	// Store result in cache (even failures, so we can skip them next time)
+	if fp != nil {
+		if storeErr := p.cache.Store(name, fp, execErr == nil); storeErr != nil {
+			slog.Debug("failed to store cache entry", "task", name, "error", storeErr)
+		}
+	}
+
+	if execErr != nil {
 		// Check if task allows continuing on error
 		if task.ContinueOnError {
-			p.printer.TaskFailedWithDuration(name, err, duration)
-			return nil // Don't propagate error
+			p.printer.TaskFailedWithDuration(name, execErr, duration)
+			return false, nil // Don't propagate error
 		}
-		p.printer.TaskFailedWithDuration(name, err, duration)
-		return &TaskExecutionError{Name: name, Err: err}
+		p.printer.TaskFailedWithDuration(name, execErr, duration)
+		return false, &TaskExecutionError{Name: name, Err: execErr}
 	}
 
 	p.printer.TaskSucceededWithDuration(name, duration)
-	return nil
+	return false, nil
 }
 
 // TaskNotFoundError indicates a task was not found

@@ -12,8 +12,11 @@ import (
 
 // ExecutorOptions configures task execution
 type ExecutorOptions struct {
-	Verbose bool
-	Debug   bool
+	Verbose    bool
+	Debug      bool
+	Force      bool   // Bypass cache (re-run even if cached)
+	NoCache    bool   // Don't read or write cache
+	ProjectKey string // Cache key for project
 }
 
 // Executor runs tasks

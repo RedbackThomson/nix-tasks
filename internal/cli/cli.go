@@ -15,5 +15,6 @@ type CLI struct {
 	List     ListCmd     `cmd:"" help:"List available tasks and shells"`
 	Describe DescribeCmd `cmd:"" help:"Show task details"`
 	Shell    ShellCmd    `cmd:"" help:"Enter a development shell"`
+	Cache    CacheCmd    `cmd:"" help:"Cache management commands"`
 	Validate ValidateCmd `cmd:"" help:"Validate configuration"`
 }

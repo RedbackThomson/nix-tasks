@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
 	"github.com/redbackthomson/nix-tasks/internal/runner"
@@ -20,6 +21,8 @@ type RunCmd struct {
 	Jobs            int    `short:"j" help:"Number of parallel jobs" default:"4"`
 	ContinueOnError bool   `help:"Continue running independent tasks on failure"`
 	Stream          bool   `help:"Stream task output in real-time (default in CI)"`
+	Force           bool   `help:"Force re-run tasks even if cached"`
+	NoCache         bool   `help:"Disable caching (don't read or write cache)"`
 }
 
 // Run executes the run command
@@ -67,13 +70,22 @@ func (c *RunCmd) Run(globals *Globals) error {
 	// Use streaming if explicitly requested, or if in CI, or if verbose
 	verbose := globals.Verbose || c.Stream || runner.DetectOutputMode() == runner.Streaming
 
+	// Compute project key for caching
+	projectKey := ""
+	if !c.NoCache {
+		projectKey = cache.ProjectKey(globals.Flake)
+	}
+
 	// Execute tasks
 	parallel := runner.NewParallelExecutor(
 		eval,
 		cfg,
 		runner.ExecutorOptions{
-			Verbose: verbose,
-			Debug:   globals.Debug,
+			Verbose:    verbose,
+			Debug:      globals.Debug,
+			Force:      c.Force,
+			NoCache:    c.NoCache,
+			ProjectKey: projectKey,
 		},
 		runner.ParallelExecutorOptions{
 			MaxJobs:  c.Jobs,
