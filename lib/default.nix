@@ -2,6 +2,8 @@
 let
   types = import ./types.nix { inherit lib; };
   builders = import ./builders.nix { inherit lib pkgs; };
+  compose = import ./compose.nix { inherit lib; };
+  compat = import ./compat { inherit lib pkgs builders; };
 
   # Evaluate user config and generate task shells
   evalConfig = userConfig:
@@ -26,8 +28,11 @@ let
       devShells = shellResults.devShells;
     };
 in {
-  inherit evalConfig types builders;
+  inherit evalConfig types builders compose compat;
 
   # Convenience: mkTask and other builders
   inherit (builders) mkTask mkGoTask mkDockerTask mkCompoundTask;
+
+  # Convenience: composition helpers
+  inherit (compose) override append prepend extend mergeAttrs;
 }
