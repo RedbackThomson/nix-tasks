@@ -37,6 +37,11 @@ func CurrentSystem() string {
 	return fmt.Sprintf("%s-%s", nixArch, nixOS)
 }
 
+// NixTasksShellsAttr returns the flake attribute for a task shell
+func NixTasksShellsAttr(system, taskName string) string {
+	return fmt.Sprintf("nixTasksShells.%s.%s", system, taskName)
+}
+
 // Evaluator wraps Nix CLI operations
 type Evaluator struct {
 	flakePath string

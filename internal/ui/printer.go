@@ -6,12 +6,15 @@ import (
 	"io"
 	"os"
 	"sort"
+	"sync"
+	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
 )
 
 // Printer handles formatted output
 type Printer struct {
+	mu      sync.Mutex
 	buffers map[string]*bytes.Buffer
 }
 
@@ -24,6 +27,8 @@ func NewPrinter() *Printer {
 
 // TaskBuffer returns a buffer for capturing task output
 func (p *Printer) TaskBuffer(name string) io.Writer {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	buf := &bytes.Buffer{}
 	p.buffers[name] = buf
 	return buf
@@ -36,12 +41,35 @@ func (p *Printer) TaskStarted(name string) {
 
 // TaskSucceeded prints success message
 func (p *Printer) TaskSucceeded(name string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	_, _ = fmt.Fprintf(os.Stdout, "%s %s\n", Green("✓"), name)
+}
+
+// TaskSucceededWithDuration prints success message with duration
+func (p *Printer) TaskSucceededWithDuration(name string, duration time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Green("✓"), name, Gray(formatDuration(duration)))
 }
 
 // TaskFailed prints failure message and buffered output
 func (p *Printer) TaskFailed(name string, err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	_, _ = fmt.Fprintf(os.Stdout, "%s %s\n", Red("✗"), name)
+
+	// Print buffered output if we have it
+	if buf, ok := p.buffers[name]; ok && buf.Len() > 0 {
+		_, _ = fmt.Fprintf(os.Stdout, "%s\n", buf.String())
+	}
+}
+
+// TaskFailedWithDuration prints failure message with duration and buffered output
+func (p *Printer) TaskFailedWithDuration(name string, err error, duration time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Red("✗"), name, Gray(formatDuration(duration)))
 
 	// Print buffered output if we have it
 	if buf, ok := p.buffers[name]; ok && buf.Len() > 0 {
@@ -51,7 +79,17 @@ func (p *Printer) TaskFailed(name string, err error) {
 
 // TaskCached prints cached message
 func (p *Printer) TaskCached(name string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Green("✓"), name, Gray("(cached)"))
+}
+
+// formatDuration formats a duration in a human-readable way
+func formatDuration(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("(%dms)", d.Milliseconds())
+	}
+	return fmt.Sprintf("(%.1fs)", d.Seconds())
 }
 
 // PrintTaskList prints a formatted list of tasks
