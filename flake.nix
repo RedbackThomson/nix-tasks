@@ -11,12 +11,30 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
       in
-      {
-        packages.default = pkgs.buildGoModule {
+      let
+        nix-tasks = pkgs.buildGoModule {
           pname = "nix-tasks";
           version = "0.1.0";
           src = ./.;
-          vendorHash = null; # Update after first build with dependencies
+          vendorHash = "sha256-48Va8grh1BHGxZgwHKWvsB+HvBmmxD78cEDWl1Ysn4Y=";
+
+          meta = with pkgs.lib; {
+            description = "Nix-based task runner and development environment manager";
+            homepage = "https://github.com/redbackthomson/nix-tasks";
+            license = licenses.mit;
+            mainProgram = "nix-tasks";
+          };
+        };
+      in
+      {
+        packages = {
+          default = nix-tasks;
+          nix-tasks = nix-tasks;
+        };
+
+        apps.default = {
+          type = "app";
+          program = "${nix-tasks}/bin/nix-tasks";
         };
 
         devShells.default = pkgs.mkShell {
