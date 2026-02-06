@@ -13,11 +13,41 @@ let
         inherit lib pkgs;
         config = validated;
       };
+
+      # Serialize tasks for JSON export
+      serializedTasks = lib.mapAttrs (name: task:
+        if task.type or "shell" == "build"
+        then
+          let
+            # Get output names from the derivation's outputs attribute
+            # This is a list like ["out"] or ["out" "bin" "dev"]
+            outputNames = task.derivation.outputs or ["out"];
+
+            # Convert to attrset: output name -> store path
+            outputs = lib.listToAttrs (map (outputName: {
+              name = outputName;
+              value = "${task.derivation.${outputName}}";
+            }) outputNames);
+          in task // {
+            # Store derivation path for nix build
+            drvPath = task.derivation.drvPath;
+
+            # Serialize all outputs
+            inherit outputs;
+
+            # Preserve metadata
+            derivationName = task.derivation.name or name;
+
+            # Remove derivation field (not JSON-serializable)
+            derivation = null;
+          }
+        else task
+      ) validated.tasks;
     in {
       # Config for JSON export to Go
       nixTasksConfig = {
         packages = lib.mapAttrs (name: pkg: pkg.outPath or pkg) validated.packages;
-        tasks = validated.tasks;
+        tasks = serializedTasks;
         devShells = validated.devShells;
       };
 
@@ -31,7 +61,7 @@ in {
   inherit evalConfig types builders compose compat;
 
   # Convenience: mkTask and other builders
-  inherit (builders) mkTask mkGoTask mkDockerTask mkCompoundTask;
+  inherit (builders) mkTask mkShellTask mkGoTask mkDockerTask mkCompoundTask;
 
   # Convenience: composition helpers
   inherit (compose) override append prepend extend mergeAttrs;

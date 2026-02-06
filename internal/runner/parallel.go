@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"sync"
 	"time"
 
@@ -25,6 +24,7 @@ type TaskResult struct {
 
 // ParallelExecutor runs tasks with parallelism
 type ParallelExecutor struct {
+	executor *Executor // Delegate to executor for task execution
 	nix      *nix.Evaluator
 	config   *config.Config
 	options  ExecutorOptions
@@ -59,7 +59,11 @@ func NewParallelExecutor(
 		cacheStore = cache.NewStore(execOpts.ProjectKey)
 	}
 
+	// Create an executor for task execution
+	executor := NewExecutor(eval, cfg, execOpts)
+
 	return &ParallelExecutor{
+		executor: executor,
 		nix:      eval,
 		config:   cfg,
 		options:  execOpts,
@@ -216,42 +220,9 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 		}
 	}
 
-	p.printer.TaskStarted(name)
-
-	// Generate the script to run
-	script := GenerateScript(task)
-
-	// Run inside nix develop with the task's shell
-	system := nix.CurrentSystem()
-	shellAttr := nix.NixTasksShellsAttr(system, name)
-	cmd := p.nix.DevelopCmd(ctx, shellAttr, []string{"bash", "-e", "-c", script})
-
-	// Configure output
-	if p.options.Verbose {
-		// In verbose mode, use streaming output with prefix
-		outputMgr := NewOutputManager(Streaming)
-		cmd.Stdout = outputMgr.Writer(name)
-		cmd.Stderr = outputMgr.Writer(name)
-	} else {
-		// Buffer output, only show on error
-		cmd.Stdout = p.printer.TaskBuffer(name)
-		cmd.Stderr = p.printer.TaskBuffer(name)
-	}
-
-	// Set working directory if specified
-	if task.WorkingDir != "" {
-		cmd.Dir = task.WorkingDir
-	}
-
-	// Set environment variables (inherit from parent and add task-specific)
-	cmd.Env = os.Environ()
-	for k, v := range task.Env {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	// Execute
+	// Execute the task using the executor (handles both shell and build tasks)
 	start := time.Now()
-	execErr := cmd.Run()
+	execErr := p.executor.RunTask(ctx, name, task)
 	duration := time.Since(start)
 
 	// Store result in cache (even failures, so we can skip them next time)

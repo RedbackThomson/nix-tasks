@@ -2,9 +2,11 @@
 {
   # Task type definition
   taskType = {
+    type ? "shell",  # "shell" or "build"
     description ? "",
     deps ? [],
     depends ? [],
+    # Shell task fields
     commands ? [],
     script ? null,
     env ? {},
@@ -12,8 +14,13 @@
     inputs ? [],
     outputs ? [],
     continueOnError ? false,
+    # Build task fields
+    derivation ? null,
+    drvPath ? null,
+    derivationName ? null,
   }: {
-    inherit description deps depends commands script env workingDir inputs outputs continueOnError;
+    inherit type description deps depends commands script env workingDir inputs outputs continueOnError;
+    inherit derivation drvPath derivationName;
   };
 
   # Shell type definition

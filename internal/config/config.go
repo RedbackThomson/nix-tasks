@@ -7,20 +7,37 @@ type Config struct {
 	DevShells map[string]Shell  `json:"devShells"`
 }
 
+// TaskType represents the execution type of a task
+type TaskType string
+
+const (
+	// TaskTypeShell executes shell commands in nix develop
+	TaskTypeShell TaskType = "shell"
+	// TaskTypeBuild builds a Nix derivation
+	TaskTypeBuild TaskType = "build"
+)
+
 // Task represents a single task definition
 type Task struct {
-	Description string            `json:"description"`
-	Deps        []string          `json:"deps"`
-	Depends     []string          `json:"depends"`
-	Commands    []string          `json:"commands"`
-	Script      string            `json:"script"`
-	Env         map[string]string `json:"env"`
-	WorkingDir  string            `json:"workingDir"`
-	Inputs      []string          `json:"inputs"`
-	Outputs     []string          `json:"outputs"`
+	Type        TaskType `json:"type"`
+	Description string   `json:"description"`
+	Deps        []string `json:"deps"`
+	Depends     []string `json:"depends"`
 
-	// Error handling
-	ContinueOnError bool `json:"continueOnError"`
+	// Shell task fields
+	Commands   []string          `json:"commands,omitempty"`
+	Script     string            `json:"script,omitempty"`
+	Env        map[string]string `json:"env,omitempty"`
+	WorkingDir string            `json:"workingDir,omitempty"`
+
+	// Build task fields
+	DrvPath        string            `json:"drvPath,omitempty"`        // Derivation path for nix build
+	Outputs        map[string]string `json:"outputs,omitempty"`        // Output name -> store path
+	DerivationName string            `json:"derivationName,omitempty"` // Derivation name
+
+	// Unused fields (keep for future)
+	Inputs          []string `json:"inputs,omitempty"`
+	ContinueOnError bool     `json:"continueOnError,omitempty"`
 }
 
 // Shell represents a dev shell definition

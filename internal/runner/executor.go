@@ -3,7 +3,9 @@ package runner
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
@@ -38,15 +40,41 @@ func NewExecutor(eval *nix.Evaluator, cfg *config.Config, opts ExecutorOptions) 
 	}
 }
 
-// RunTask executes a single task
+// RunTask executes a single task (dispatches to type-specific implementation)
 func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) error {
 	e.printer.TaskStarted(name)
 
+	// Default to shell type if not specified
+	taskType := task.Type
+	if taskType == "" {
+		taskType = config.TaskTypeShell
+	}
+
+	var err error
+	switch taskType {
+	case config.TaskTypeShell:
+		err = e.runShellTask(ctx, name, task)
+	case config.TaskTypeBuild:
+		err = e.runBuildTask(ctx, name, task)
+	default:
+		err = fmt.Errorf("unknown task type: %s", taskType)
+	}
+
+	if err != nil {
+		e.printer.TaskFailed(name, err)
+		return err
+	}
+
+	e.printer.TaskSucceeded(name)
+	return nil
+}
+
+// runShellTask executes a shell task in nix develop
+func (e *Executor) runShellTask(ctx context.Context, name string, task config.Task) error {
 	// Generate the script to run
 	script := GenerateScript(task)
 
 	// Run inside nix develop with the task's shell
-	// Try system-specific path first, then fall back to non-system-specific
 	system := nix.CurrentSystem()
 	shellAttr := fmt.Sprintf("nixTasksShells.%s.%s", system, name)
 	cmd := e.nix.DevelopCmd(ctx, shellAttr, []string{"bash", "-e", "-c", script})
@@ -73,12 +101,70 @@ func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) e
 	}
 
 	// Execute
-	err := cmd.Run()
-	if err != nil {
-		e.printer.TaskFailed(name, err)
+	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("task '%s' failed: %w", name, err)
 	}
 
-	e.printer.TaskSucceeded(name)
+	return nil
+}
+
+// runBuildTask builds a Nix derivation and links outputs
+func (e *Executor) runBuildTask(ctx context.Context, name string, task config.Task) error {
+	if task.DrvPath == "" {
+		return fmt.Errorf("build task %s missing drvPath", name)
+	}
+
+	if len(task.Outputs) == 0 {
+		return fmt.Errorf("build task %s has no outputs", name)
+	}
+
+	// Build the derivation
+	cmd := e.nix.BuildCmd(ctx, task.DrvPath)
+
+	// Configure output
+	if e.options.Verbose {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	} else {
+		// Buffer output, only show on error
+		cmd.Stdout = e.printer.TaskBuffer(name)
+		cmd.Stderr = e.printer.TaskBuffer(name)
+	}
+
+	// Execute nix build
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("nix build failed: %w", err)
+	}
+
+	// Link outputs to workspace
+	if err := e.linkBuildOutputs(name, task); err != nil {
+		return fmt.Errorf("failed to link outputs: %w", err)
+	}
+
+	return nil
+}
+
+// linkBuildOutputs creates symlinks in .nix-tasks/<taskname>/<output>
+func (e *Executor) linkBuildOutputs(name string, task config.Task) error {
+	taskDir := filepath.Join(".nix-tasks", name)
+	if err := os.MkdirAll(taskDir, 0755); err != nil {
+		return err
+	}
+
+	// Link each output
+	for outputName, outputPath := range task.Outputs {
+		linkPath := filepath.Join(taskDir, outputName)
+
+		// Remove existing link/file
+		os.Remove(linkPath)
+
+		// Create symlink to store path
+		if err := os.Symlink(outputPath, linkPath); err != nil {
+			return fmt.Errorf("failed to link %s: %w", outputName, err)
+		}
+
+		slog.Debug("linked output", "task", name, "output", outputName, "path", outputPath, "link", linkPath)
+	}
+
 	return nil
 }

@@ -119,6 +119,18 @@ func (e *Evaluator) Build(ctx context.Context, attr string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
+// BuildCmd returns an exec.Cmd that builds a derivation path
+// Uses --no-link since we'll create our own symlinks in .nix-tasks/
+func (e *Evaluator) BuildCmd(ctx context.Context, drvPath string) *exec.Cmd {
+	args := []string{"build", "--no-link", drvPath}
+
+	if e.debug {
+		slog.Debug("running nix command", "cmd", "nix", "args", args)
+	}
+
+	return exec.CommandContext(ctx, "nix", args...)
+}
+
 // DevelopCmd returns an exec.Cmd that runs a command inside nix develop
 func (e *Evaluator) DevelopCmd(ctx context.Context, shellAttr string, command []string) *exec.Cmd {
 	expr := fmt.Sprintf("%s#%s", e.flakePath, shellAttr)

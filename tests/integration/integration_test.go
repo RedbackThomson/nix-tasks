@@ -879,3 +879,50 @@ func TestCache_Stats(t *testing.T) {
 		t.Errorf("expected 'Entries:' in output, got: %s", stdout)
 	}
 }
+
+// =============================================================================
+// mkGoTask Builder Tests
+// =============================================================================
+
+func TestMkGoTask_BuildsGoApplication(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "gotask")
+
+	stdout, stderr, err := runNixTasks(t, binary, "run", "build", "-f", flakePath, "-v")
+	if err != nil {
+		t.Fatalf("nix-tasks run build failed: %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
+	}
+
+	// Task should complete successfully
+	if !strings.Contains(stdout, "✓") {
+		t.Errorf("expected success checkmark in output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "build") {
+		t.Errorf("expected 'build' task in output, got: %s", stdout)
+	}
+}
+
+func TestMkGoTask_BuildsBinaryToCorrectLocation(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "gotask")
+
+	stdout, stderr, err := runNixTasks(t, binary, "run", "test", "-f", flakePath, "-v")
+	if err != nil {
+		t.Fatalf("nix-tasks run test failed: %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
+	}
+
+	// Test task should run successfully (which verifies binary exists and runs)
+	if !strings.Contains(stdout, "✓") {
+		t.Errorf("expected success checkmark in output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "test") {
+		t.Errorf("expected 'test' task in output, got: %s", stdout)
+	}
+
+	// Should see the output from the Go program
+	if !strings.Contains(stdout, "Hello from mkGoTask!") {
+		t.Errorf("expected 'Hello from mkGoTask!' in output, got: %s", stdout)
+	}
+}

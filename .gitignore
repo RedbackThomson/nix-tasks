@@ -2,6 +2,7 @@
 /nix-tasks
 /bin/
 /result
+.nix-tasks/
 
 # Go
 *.exe

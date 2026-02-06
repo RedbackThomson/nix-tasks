@@ -1,7 +1,7 @@
 { lib, pkgs }:
 rec {
-  # Generic task builder
-  mkTask = {
+  # Shell task builder (executes shell commands in nix develop)
+  mkShellTask = {
     name ? null,
     description ? "",
     deps ? [],
@@ -15,30 +15,58 @@ rec {
     continueOnError ? false,
     ...
   }: {
+    type = "shell";
     inherit description deps depends commands script env workingDir inputs outputs continueOnError;
   };
 
-  # Go-specific task builder
+  # Backward compatibility: mkTask becomes mkShellTask
+  mkTask = mkShellTask;
+
+  # Go-specific task builder using buildGoModule
+  # Creates a build task that uses Nix's buildGoModule
   mkGoTask = {
     name ? null,
-    description ? "",
-    command ? "build",
-    output ? null,
-    packages ? [],
+    description ? "Build ${pname}",
+    pname ? name,
+    version ? "0.1.0",
+    src ? ./.,
+    vendorHash ? null,
+    vendorSha256 ? null,
+    subPackages ? null,
     ldflags ? "",
+    tags ? [],
+    CGO_ENABLED ? "0",
     deps ? [],
+    depends ? [],
     ...
   }@args:
-    mkTask ({
-      inherit description;
-      deps = ["go"] ++ packages ++ deps;
-      commands = [
-        ("go ${command}" +
-          lib.optionalString (ldflags != "") " -ldflags '${ldflags}'" +
-          lib.optionalString (output != null) " -o ${output}" +
-          " ./...")
+    let
+      # Attributes to remove for buildGoModule
+      taskOnlyAttrs = [
+        "name" "description" "deps" "depends"
       ];
-    } // (builtins.removeAttrs args ["command" "output" "packages" "ldflags" "name"]));
+
+      # Build the Go package using buildGoModule
+      goPackage = pkgs.buildGoModule ({
+        inherit pname version src;
+        vendorHash = if vendorHash != null then vendorHash else vendorSha256;
+      } // (lib.optionalAttrs (subPackages != null) { inherit subPackages; })
+        // (lib.optionalAttrs (ldflags != "") { inherit ldflags; })
+        // (lib.optionalAttrs (tags != []) { inherit tags; })
+        // {
+          env = {
+            inherit CGO_ENABLED;
+          };
+        }
+        // (builtins.removeAttrs args (taskOnlyAttrs ++ [
+          "pname" "version" "src" "vendorHash" "vendorSha256"
+          "subPackages" "ldflags" "tags" "CGO_ENABLED"
+        ])));
+    in {
+      type = "build";
+      inherit description deps depends;
+      derivation = goPackage;
+    };
 
   # Docker task builder
   mkDockerTask = {
@@ -51,7 +79,7 @@ rec {
     deps ? [],
     ...
   }@args:
-    mkTask ({
+    mkShellTask ({
       inherit description;
       deps = ["docker"] ++ deps;
       commands = [
@@ -66,7 +94,7 @@ rec {
     tasks,
     ...
   }@args:
-    mkTask ({
+    mkShellTask ({
       inherit description;
       depends = map (t: "task:${t}") tasks;
       commands = [];
