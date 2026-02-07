@@ -56,6 +56,9 @@ let
 
       # User-facing dev shells
       devShells = shellResults.devShells;
+
+      # Raw validated tasks (for accessing derivations)
+      rawTasks = validated.tasks;
     };
 in {
   inherit evalConfig types builders compose compat;

@@ -9,24 +9,98 @@
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       forAllSystems = fn: nixpkgs.lib.genAttrs systems (system: fn system);
+
+      mkTasksConfig = system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          lib = self.lib.${system};
+        in lib.evalConfig {
+          packages = {
+            go = pkgs.go;
+            golangci-lint = pkgs.golangci-lint;
+          };
+
+          tasks = {
+            # Build using Nix's buildGoModule for reproducibility
+            build = lib.mkGoTask {
+              pname = "nix-tasks";
+              version = "0.1.0";
+              description = "Build nix-tasks binary";
+              src = ./.;
+              vendorHash = "sha256-48Va8grh1BHGxZgwHKWvsB+HvBmmxD78cEDWl1Ysn4Y=";
+              CGO_ENABLED = "0";
+              ldflags = [ "-s" "-w" ];
+            };
+
+            # Run Go tests
+            test = lib.mkTask {
+              description = "Run Go tests";
+              deps = [ "go" ];
+              commands = [
+                "go test -v ./..."
+              ];
+            };
+
+            # Run linter
+            lint = lib.mkTask {
+              description = "Run golangci-lint";
+              deps = [ "golangci-lint" ];
+              commands = [
+                "golangci-lint run ./..."
+              ];
+            };
+
+            # Format code
+            fmt = lib.mkTask {
+              description = "Format Go code";
+              deps = [ "go" ];
+              commands = [
+                "go fmt ./..."
+              ];
+            };
+
+            # Tidy dependencies
+            tidy = lib.mkTask {
+              description = "Tidy Go dependencies";
+              deps = [ "go" ];
+              commands = [
+                "go mod tidy"
+              ];
+            };
+
+            # Clean build artifacts
+            clean = lib.mkTask {
+              description = "Clean build artifacts";
+              commands = [
+                "rm -rf result nix-tasks"
+                "echo 'Cleaned build artifacts'"
+              ];
+            };
+
+            # Run all checks (test + lint)
+            check = lib.mkCompoundTask {
+              description = "Run all checks";
+              tasks = [ "test" "lint" ];
+            };
+          };
+
+          devShells = {
+            default = {
+              packages = [ "go" "golangci-lint" ];
+              shellHook = ''
+                echo "nix-tasks development shell"
+                echo "Available commands: go, golangci-lint"
+              '';
+            };
+          };
+        };
     in
     {
       packages = forAllSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
-          nix-tasks = pkgs.buildGoModule {
-            pname = "nix-tasks";
-            version = "0.1.0";
-            src = ./.;
-            vendorHash = "sha256-48Va8grh1BHGxZgwHKWvsB+HvBmmxD78cEDWl1Ysn4Y=";
-
-            meta = with pkgs.lib; {
-              description = "Nix-based task runner and development environment manager";
-              homepage = "https://github.com/redbackthomson/nix-tasks";
-              license = licenses.mit;
-              mainProgram = "nix-tasks";
-            };
-          };
+          tasksConfig = mkTasksConfig system;
+          # Use the build task's derivation directly
+          nix-tasks = tasksConfig.rawTasks.build.derivation;
         in
         {
           default = nix-tasks;
@@ -49,18 +123,9 @@
 
       devShells = forAllSystems (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
+          tasksConfig = mkTasksConfig system;
         in
-        {
-          default = pkgs.mkShell {
-            packages = with pkgs; [
-              go
-              gopls
-              golangci-lint
-              nix
-            ];
-          };
-        }
+        tasksConfig.devShells
       );
 
       lib = forAllSystems (system:
@@ -69,5 +134,9 @@
         in
         import ./lib { inherit pkgs; lib = pkgs.lib; }
       );
+
+      # Expose nix-tasks configuration for the CLI
+      nixTasksConfig = forAllSystems (system: (mkTasksConfig system).nixTasksConfig);
+      nixTasksShells = forAllSystems (system: (mkTasksConfig system).nixTasksShells);
     };
 }
