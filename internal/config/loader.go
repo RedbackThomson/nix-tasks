@@ -7,6 +7,19 @@ import (
 	"github.com/redbackthomson/nix-tasks/internal/nix"
 )
 
+// initializeMaps ensures all config maps are initialized to non-nil values
+func initializeMaps(cfg *Config) {
+	if cfg.Packages == nil {
+		cfg.Packages = make(map[string]string)
+	}
+	if cfg.Tasks == nil {
+		cfg.Tasks = make(map[string]Task)
+	}
+	if cfg.DevShells == nil {
+		cfg.DevShells = make(map[string]Shell)
+	}
+}
+
 // Load evaluates the Nix configuration and returns the parsed config
 func Load(ctx context.Context, eval *nix.Evaluator) (*Config, error) {
 	var cfg Config
@@ -24,15 +37,7 @@ func Load(ctx context.Context, eval *nix.Evaluator) (*Config, error) {
 	}
 
 	// Initialize empty maps if nil
-	if cfg.Packages == nil {
-		cfg.Packages = make(map[string]string)
-	}
-	if cfg.Tasks == nil {
-		cfg.Tasks = make(map[string]Task)
-	}
-	if cfg.DevShells == nil {
-		cfg.DevShells = make(map[string]Shell)
-	}
+	initializeMaps(&cfg)
 
 	// Validate the loaded config
 	if err := Validate(&cfg); err != nil {

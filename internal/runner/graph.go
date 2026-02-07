@@ -31,7 +31,7 @@ func NewTaskGraph(tasks map[string]config.Task) (*TaskGraph, error) {
 	// Build edges
 	for name, task := range tasks {
 		for _, dep := range task.Depends {
-			depName := strings.TrimPrefix(dep, "task:")
+			depName := strings.TrimPrefix(dep, config.TaskDependencyPrefix)
 			if _, ok := tasks[depName]; !ok {
 				return nil, fmt.Errorf("task '%s' depends on unknown task '%s'", name, depName)
 			}

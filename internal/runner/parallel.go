@@ -10,7 +10,6 @@ import (
 	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
-	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
 // TaskResult holds the result of a task execution
@@ -25,10 +24,6 @@ type TaskResult struct {
 // ParallelExecutor runs tasks with parallelism
 type ParallelExecutor struct {
 	executor *Executor // Delegate to executor for task execution
-	nix      *nix.Evaluator
-	config   *config.Config
-	options  ExecutorOptions
-	printer  *ui.Printer
 	cache    *cache.Store
 	maxJobs  int
 	strategy FailureStrategy
@@ -64,10 +59,6 @@ func NewParallelExecutor(
 
 	return &ParallelExecutor{
 		executor: executor,
-		nix:      eval,
-		config:   cfg,
-		options:  execOpts,
-		printer:  ui.NewPrinter(),
 		cache:    cacheStore,
 		maxJobs:  maxJobs,
 		strategy: parallelOpts.Strategy,
@@ -196,13 +187,13 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 	return results
 }
 
-// runTask executes a single task (similar to Executor.RunTask but with duration tracking)
+// runTask executes a single task with caching support
 func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config.Task) (cached bool, err error) {
 	// Compute fingerprint for caching
 	var fp *cache.Fingerprint
 	if p.cache != nil {
 		var fpErr error
-		fp, fpErr = cache.ComputeFingerprint(task, p.config.Packages, task.WorkingDir)
+		fp, fpErr = cache.ComputeFingerprint(task, p.executor.config.Packages, task.WorkingDir)
 		if fpErr != nil {
 			slog.Debug("failed to compute fingerprint", "task", name, "error", fpErr)
 			// Continue without caching
@@ -210,9 +201,9 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 	}
 
 	// Check cache if not forcing rebuild
-	if fp != nil && !p.options.Force {
+	if fp != nil && !p.executor.options.Force {
 		if entry, ok := p.cache.Lookup(name, fp); ok {
-			p.printer.TaskCached(name)
+			p.executor.printer.TaskCached(name)
 			if !entry.Success {
 				return true, &TaskExecutionError{Name: name, Err: fmt.Errorf("failed (cached)")}
 			}
@@ -235,14 +226,14 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 	if execErr != nil {
 		// Check if task allows continuing on error
 		if task.ContinueOnError {
-			p.printer.TaskFailedWithDuration(name, execErr, duration)
+			p.executor.printer.TaskFailedWithDuration(name, execErr, duration)
 			return false, nil // Don't propagate error
 		}
-		p.printer.TaskFailedWithDuration(name, execErr, duration)
+		p.executor.printer.TaskFailedWithDuration(name, execErr, duration)
 		return false, &TaskExecutionError{Name: name, Err: execErr}
 	}
 
-	p.printer.TaskSucceededWithDuration(name, duration)
+	p.executor.printer.TaskSucceededWithDuration(name, duration)
 	return false, nil
 }
 

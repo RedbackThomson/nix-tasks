@@ -1,5 +1,8 @@
 package config
 
+// TaskDependencyPrefix is the prefix used for task dependencies
+const TaskDependencyPrefix = "task:"
+
 // Config is the root configuration structure
 type Config struct {
 	Packages  map[string]string `json:"packages"`

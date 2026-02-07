@@ -28,7 +28,7 @@ func Validate(cfg *Config) error {
 
 		// Check task depends reference valid tasks
 		for _, dep := range task.Depends {
-			depName := strings.TrimPrefix(dep, "task:")
+			depName := strings.TrimPrefix(dep, TaskDependencyPrefix)
 			if _, ok := cfg.Tasks[depName]; !ok {
 				errs = append(errs, fmt.Sprintf("task '%s': unknown task dependency '%s'", taskName, dep))
 			}
