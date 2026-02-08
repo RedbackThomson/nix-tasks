@@ -119,16 +119,66 @@ In your `flake.nix`:
         };
       };
     in {
-      inherit (config) nixTasksConfig nixTasksShells devShells;
+      # Expose nix-tasks config
+      inherit (config) nixTasksConfig nixTasksShells;
+
+      # Expose nix-tasks CLI as a package and app (optional but recommended)
+      packages.${system} = {
+        nix-tasks = nix-tasks.packages.${system}.default;
+        default = nix-tasks.packages.${system}.default;
+      };
+
+      apps.${system} = {
+        nix-tasks = nix-tasks.apps.${system}.default;
+        default = nix-tasks.apps.${system}.default;
+      };
+
+      # Expose dev shells with nix-tasks available
+      devShells.${system}.default = config.devShells.default.overrideAttrs (old: {
+        buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
+      });
     };
 }
 ```
 
 ### 2. List available tasks
 
-```bash
-$ nix run github:redbackthomson/nix-tasks -- list
+You can run nix-tasks in three ways:
 
+#### Option A: From the global nix-tasks (requires --flake flag)
+
+```bash
+$ nix run github:redbackthomson/nix-tasks -- list --flake .
+
+Tasks:
+  build                Build the application
+  clean                Clean build artifacts
+  test                 Run tests
+```
+
+#### Option B: Using your project's exposed app (recommended)
+
+```bash
+# Run via the nix-tasks package you exposed
+$ nix run .#nix-tasks -- list
+
+# Or use the default app (shorter)
+$ nix run . -- list
+
+Tasks:
+  build                Build the application
+  clean                Clean build artifacts
+  test                 Run tests
+```
+
+#### Option C: In a development shell
+
+```bash
+# Enter the dev shell (which includes nix-tasks)
+$ nix develop
+
+# Now run nix-tasks directly
+$ nix-tasks list
 Tasks:
   build                Build the application
   clean                Clean build artifacts
@@ -138,15 +188,20 @@ Tasks:
 ### 3. Run a task
 
 ```bash
-$ nix run github:redbackthomson/nix-tasks -- run build
+# Using your project's exposed app
+$ nix run . -- run build
+✓ build
 
+# Or in the dev shell
+$ nix develop
+$ nix-tasks run build
 ✓ build
 ```
 
 With verbose output:
 
 ```bash
-$ nix run github:redbackthomson/nix-tasks -- run build -v
+$ nix run . -- run build -v
 
 go build -o bin/app ./cmd/app
 ✓ build
@@ -476,6 +531,8 @@ See the [examples](./examples) directory:
 
 - **[simple](./examples/simple)** - Minimal example with build, test, clean tasks
 - **[demo](./examples/demo)** - Full example with 16 tasks, dependencies, and multiple dev shells
+- **[company-standards](./examples/company-standards)** - Company-wide standards flake template
+- **[app-using-standards](./examples/app-using-standards)** - Repository extending company standards
 
 ## Roadmap
 

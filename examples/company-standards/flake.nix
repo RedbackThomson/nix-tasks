@@ -208,6 +208,17 @@
       # EXPORTS
       # ==========================================================
 
+      # Expose nix-tasks CLI as a package and app
+      packages = forAllSystems (system: {
+        nix-tasks = nix-tasks.packages.${system}.default;
+        default = nix-tasks.packages.${system}.default;
+      });
+
+      apps = forAllSystems (system: {
+        nix-tasks = nix-tasks.apps.${system}.default;
+        default = nix-tasks.apps.${system}.default;
+      });
+
       # Re-export nix-tasks lib with company extensions
       lib = forAllSystems (system:
         let
@@ -223,12 +234,17 @@
       # Export standard config per system for repositories to extend
       standardConfig = forAllSystems mkStandardConfig;
 
-      # For testing: evaluated config with devShells
+      # For testing: evaluated config with devShells that include nix-tasks
       devShells = forAllSystems (system:
         let
           lib = nix-tasks.lib.${system};
           config = lib.evalConfig (mkStandardConfig system);
-        in config.devShells
+        in
+        builtins.mapAttrs (name: shell:
+          shell.overrideAttrs (old: {
+            buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
+          })
+        ) config.devShells
       );
 
       # For testing: export the evaluated config

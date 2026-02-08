@@ -52,8 +52,10 @@ This example demonstrates nix-tasks with a mock Go web service project.
 
 ## Quick Start
 
+### Option 1: Use in development shell (recommended)
+
 ```bash
-# Enter the development shell
+# Enter the development shell (includes nix-tasks)
 nix develop
 
 # List all available tasks
@@ -73,6 +75,20 @@ nix-tasks validate
 
 # Clean up
 nix-tasks run clean
+```
+
+### Option 2: Run tasks directly without entering shell
+
+```bash
+# Run tasks directly with nix run
+nix run .#nix-tasks -- list
+nix run .#nix-tasks -- run build
+nix run .#nix-tasks -- run ci
+
+# Or use the default app (shorter)
+nix run . -- list
+nix run . -- run build
+nix run . -- run ci
 ```
 
 ## Tasks

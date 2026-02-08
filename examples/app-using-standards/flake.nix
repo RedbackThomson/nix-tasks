@@ -173,8 +173,31 @@
           };
         in lib.evalConfig config;
     in {
+      # Expose nix-tasks CLI as a package and app
+      packages = forAllSystems (system: {
+        nix-tasks = nix-tasks.packages.${system}.default;
+        default = nix-tasks.packages.${system}.default;
+      });
+
+      apps = forAllSystems (system: {
+        nix-tasks = nix-tasks.apps.${system}.default;
+        default = nix-tasks.apps.${system}.default;
+      });
+
+      # Expose task configuration for nix-tasks CLI
       nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
       nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      devShells = forAllSystems (system: (mkConfig system).devShells);
+
+      # Expose dev shells with nix-tasks available
+      devShells = forAllSystems (system:
+        let
+          config = mkConfig system;
+        in
+        builtins.mapAttrs (name: shell:
+          shell.overrideAttrs (old: {
+            buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
+          })
+        ) config.devShells
+      );
     };
 }

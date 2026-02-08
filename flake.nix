@@ -124,8 +124,14 @@
       devShells = forAllSystems (system:
         let
           tasksConfig = mkTasksConfig system;
+          nix-tasks = self.packages.${system}.nix-tasks;
         in
-        tasksConfig.devShells
+        # Extend all dev shells to include nix-tasks binary
+        builtins.mapAttrs (name: shell:
+          shell.overrideAttrs (old: {
+            buildInputs = (old.buildInputs or []) ++ [ nix-tasks ];
+          })
+        ) tasksConfig.devShells
       );
 
       lib = forAllSystems (system:

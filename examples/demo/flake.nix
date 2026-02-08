@@ -245,9 +245,39 @@
           };
         };
     in {
-      # Export config, shells, and devShells for each system
+      # Expose nix-tasks CLI as a package and app
+      packages = forAllSystems (system: {
+        nix-tasks = nix-tasks.packages.${system}.default;
+        default = nix-tasks.packages.${system}.default;
+      });
+
+      apps = forAllSystems (system: {
+        nix-tasks = nix-tasks.apps.${system}.default;
+        default = nix-tasks.apps.${system}.default;
+      });
+
+      # Expose task configuration for nix-tasks CLI
       nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
       nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      devShells = forAllSystems (system: (mkConfig system).devShells);
+
+      # Expose dev shells with nix-tasks available
+      devShells = forAllSystems (system:
+        let
+          config = mkConfig system;
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        config.devShells // {
+          # Extend all shells to include nix-tasks
+          minimal = config.devShells.minimal.overrideAttrs (old: {
+            buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
+          });
+          ci = config.devShells.ci.overrideAttrs (old: {
+            buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
+          });
+          default = config.devShells.default.overrideAttrs (old: {
+            buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
+          });
+        }
+      );
     };
 }
