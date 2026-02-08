@@ -41,9 +41,11 @@ type Task struct {
 	// Cache control
 	NoCache bool `json:"noCache,omitempty"`
 
-	// Unused fields (keep for future)
-	Inputs          []string `json:"inputs,omitempty"`
-	ContinueOnError bool     `json:"continueOnError,omitempty"`
+	// Input tracking for cache fingerprinting
+	Inputs []string `json:"inputs,omitempty"`
+
+	// Error handling
+	ContinueOnError bool `json:"continueOnError,omitempty"`
 }
 
 // Shell represents a dev shell definition
