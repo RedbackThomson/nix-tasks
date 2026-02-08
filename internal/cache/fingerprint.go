@@ -18,7 +18,13 @@ type Fingerprint struct {
 }
 
 // ComputeFingerprint calculates the fingerprint for a task
+// Returns nil if the task has noCache=true
 func ComputeFingerprint(task config.Task, packages map[string]string, workDir string) (*Fingerprint, error) {
+	// Skip fingerprinting for tasks that should never be cached
+	if task.NoCache {
+		return nil, nil
+	}
+
 	h := sha256.New()
 
 	// Hash task definition (excluding description which doesn't affect execution)

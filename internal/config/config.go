@@ -38,6 +38,9 @@ type Task struct {
 	Outputs        map[string]string `json:"outputs,omitempty"`        // Output name -> store path
 	DerivationName string            `json:"derivationName,omitempty"` // Derivation name
 
+	// Cache control
+	NoCache bool `json:"noCache,omitempty"`
+
 	// Unused fields (keep for future)
 	Inputs          []string `json:"inputs,omitempty"`
 	ContinueOnError bool     `json:"continueOnError,omitempty"`

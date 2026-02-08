@@ -13,10 +13,11 @@ rec {
     inputs ? [],
     outputs ? [],
     continueOnError ? false,
+    noCache ? false,
     ...
   }: {
     type = "shell";
-    inherit description deps depends commands script env workingDir inputs outputs continueOnError;
+    inherit description deps depends commands script env workingDir inputs outputs continueOnError noCache;
   };
 
   # Backward compatibility: mkTask becomes mkShellTask
@@ -38,12 +39,13 @@ rec {
     CGO_ENABLED ? "0",
     deps ? [],
     depends ? [],
+    noCache ? false,
     ...
   }@args:
     let
       # Attributes to remove for buildGoModule
       taskOnlyAttrs = [
-        "name" "description" "deps" "depends"
+        "name" "description" "deps" "depends" "noCache"
       ];
 
       # Build the Go package using buildGoModule
@@ -64,7 +66,7 @@ rec {
         ])));
     in {
       type = "build";
-      inherit description deps depends;
+      inherit description deps depends noCache;
       derivation = goPackage;
     };
 
