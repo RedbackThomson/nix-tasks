@@ -3,9 +3,11 @@ package runner
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
@@ -23,10 +25,11 @@ type ExecutorOptions struct {
 
 // Executor runs tasks
 type Executor struct {
-	nix     *nix.Evaluator
-	config  *config.Config
-	options ExecutorOptions
-	printer *ui.Printer
+	nix      *nix.Evaluator
+	config   *config.Config
+	options  ExecutorOptions
+	printer  *ui.Printer
+	streamMu sync.Mutex // guards streaming output across tasks
 }
 
 // NewExecutor creates a new task executor
@@ -38,6 +41,22 @@ func NewExecutor(eval *nix.Evaluator, cfg *config.Config, opts ExecutorOptions) 
 		options: opts,
 		printer: ui.NewPrinter(),
 	}
+}
+
+// taskOutput returns the stdout and stderr writers for a task.
+// In verbose/streaming mode, output is prefixed with the task name.
+// Otherwise, output is buffered and only shown on failure.
+func (e *Executor) taskOutput(name string) (stdout, stderr io.Writer) {
+	if e.options.Verbose {
+		pw := &prefixWriter{
+			prefix: fmt.Sprintf("[%s] ", name),
+			out:    os.Stdout,
+			mu:     &e.streamMu,
+		}
+		return pw, pw
+	}
+	buf := e.printer.TaskBuffer(name)
+	return buf, buf
 }
 
 // RunTask executes a single task (dispatches to type-specific implementation)
@@ -80,14 +99,7 @@ func (e *Executor) runShellTask(ctx context.Context, name string, task config.Ta
 	cmd := e.nix.DevelopCmd(ctx, shellAttr, []string{"bash", "-e", "-c", script})
 
 	// Configure output
-	if e.options.Verbose {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	} else {
-		// Buffer output, only show on error
-		cmd.Stdout = e.printer.TaskBuffer(name)
-		cmd.Stderr = e.printer.TaskBuffer(name)
-	}
+	cmd.Stdout, cmd.Stderr = e.taskOutput(name)
 
 	// Set working directory if specified
 	if task.WorkingDir != "" {
@@ -122,14 +134,7 @@ func (e *Executor) runBuildTask(ctx context.Context, name string, task config.Ta
 	cmd := e.nix.BuildCmd(ctx, task.DrvPath)
 
 	// Configure output
-	if e.options.Verbose {
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-	} else {
-		// Buffer output, only show on error
-		cmd.Stdout = e.printer.TaskBuffer(name)
-		cmd.Stderr = e.printer.TaskBuffer(name)
-	}
+	cmd.Stdout, cmd.Stderr = e.taskOutput(name)
 
 	// Execute nix build
 	if err := cmd.Run(); err != nil {
