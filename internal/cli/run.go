@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 
 	"github.com/redbackthomson/nix-tasks/internal/cache"
@@ -98,8 +100,9 @@ func (c *RunCmd) Run(globals *Globals) error {
 		return err
 	}
 
-	// Print summary
-	printSummary(results)
+	// Print dependency tree with results
+	fmt.Println()
+	printTree(graph, c.Task, results)
 
 	// Return error if any task failed
 	for _, r := range results {
@@ -111,29 +114,83 @@ func (c *RunCmd) Run(globals *Globals) error {
 	return nil
 }
 
-// printSummary prints the execution summary
-func printSummary(results []runner.TaskResult) {
+// printTree prints an ASCII dependency tree with results and a summary line
+func printTree(graph *runner.TaskGraph, target string, results []runner.TaskResult) {
+	resultMap := make(map[string]runner.TaskResult)
+	for _, r := range results {
+		resultMap[r.Name] = r
+	}
+
+	printTreeNode(graph, target, resultMap, 0)
+
+	// Print summary line
 	var passed, failed, skipped int
 	for _, r := range results {
-		if r.Success {
+		switch {
+		case r.Success:
 			passed++
-		} else if errors.Is(r.Error, context.Canceled) {
+		case errors.Is(r.Error, context.Canceled):
 			skipped++
-		} else {
+		default:
 			failed++
 		}
 	}
 
-	fmt.Printf("\nCompleted: %d tasks", len(results))
+	fmt.Printf("Completed: %d tasks", len(results))
+	parts := []string{}
 	if passed > 0 {
-		fmt.Printf(" (%d passed", passed)
-		if failed > 0 {
-			fmt.Printf(", %s", ui.Red(fmt.Sprintf("%d failed", failed)))
-		}
-		if skipped > 0 {
-			fmt.Printf(", %d skipped", skipped)
-		}
-		fmt.Print(")")
+		parts = append(parts, fmt.Sprintf("%d passed", passed))
+	}
+	if failed > 0 {
+		parts = append(parts, ui.Red(fmt.Sprintf("%d failed", failed)))
+	}
+	if skipped > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped", skipped))
+	}
+	if len(parts) > 0 {
+		fmt.Printf(" (%s)", strings.Join(parts, ", "))
 	}
 	fmt.Println()
+}
+
+// printTreeNode recursively prints a task and its dependencies as an indented tree
+func printTreeNode(graph *runner.TaskGraph, name string, results map[string]runner.TaskResult, depth int) {
+	r, ok := results[name]
+	indent := strings.Repeat("  ", depth)
+
+	// Determine status symbol
+	status := ui.Green("✓")
+	if ok && !r.Success {
+		if errors.Is(r.Error, context.Canceled) {
+			status = ui.Gray("-")
+		} else {
+			status = ui.Red("✗")
+		}
+	}
+
+	// Determine suffix (duration or cached)
+	suffix := ""
+	if ok {
+		if r.Cached {
+			suffix = " " + ui.Gray("(cached)")
+		} else if r.Duration > 0 {
+			suffix = " " + ui.Gray(ui.FormatDuration(r.Duration))
+		}
+	}
+
+	fmt.Printf("%s%s %s%s\n", indent, status, name, suffix)
+
+	// Print buffered output for failed tasks
+	if ok && !r.Success && r.Output != "" && !errors.Is(r.Error, context.Canceled) {
+		for _, line := range strings.Split(strings.TrimRight(r.Output, "\n"), "\n") {
+			fmt.Printf("%s    %s\n", indent, line)
+		}
+	}
+
+	// Print children (dependencies)
+	deps := graph.Dependencies(name)
+	sort.Strings(deps)
+	for _, dep := range deps {
+		printTreeNode(graph, dep, results, depth+1)
+	}
 }

@@ -19,6 +19,7 @@ type TaskResult struct {
 	Cached   bool
 	Error    error
 	Duration time.Duration
+	Output   string // Buffered stdout/stderr (non-verbose mode only)
 }
 
 // ParallelExecutor runs tasks with parallelism
@@ -179,6 +180,7 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 				Cached:   cached,
 				Error:    err,
 				Duration: duration,
+				Output:   p.executor.printer.GetBuffer(taskName),
 			}
 		}(i, name)
 	}
@@ -203,7 +205,6 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 	// Check cache if not forcing rebuild
 	if fp != nil && !p.executor.options.Force {
 		if entry, ok := p.cache.Lookup(name, fp); ok {
-			p.executor.printer.TaskCached(name)
 			if !entry.Success {
 				return true, &TaskExecutionError{Name: name, Err: fmt.Errorf("failed (cached)")}
 			}
@@ -212,9 +213,7 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 	}
 
 	// Execute the task using the executor (handles both shell and build tasks)
-	start := time.Now()
 	execErr := p.executor.RunTask(ctx, name, task)
-	duration := time.Since(start)
 
 	// Store result in cache (even failures, so we can skip them next time)
 	if fp != nil {
@@ -226,14 +225,11 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 	if execErr != nil {
 		// Check if task allows continuing on error
 		if task.ContinueOnError {
-			p.executor.printer.TaskFailedWithDuration(name, execErr, duration)
 			return false, nil // Don't propagate error
 		}
-		p.executor.printer.TaskFailedWithDuration(name, execErr, duration)
 		return false, &TaskExecutionError{Name: name, Err: execErr}
 	}
 
-	p.executor.printer.TaskSucceededWithDuration(name, duration)
 	return false, nil
 }
 

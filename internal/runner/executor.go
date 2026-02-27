@@ -69,23 +69,14 @@ func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) e
 		taskType = config.TaskTypeShell
 	}
 
-	var err error
 	switch taskType {
 	case config.TaskTypeShell:
-		err = e.runShellTask(ctx, name, task)
+		return e.runShellTask(ctx, name, task)
 	case config.TaskTypeBuild:
-		err = e.runBuildTask(ctx, name, task)
+		return e.runBuildTask(ctx, name, task)
 	default:
-		err = fmt.Errorf("unknown task type: %s", taskType)
+		return fmt.Errorf("unknown task type: %s", taskType)
 	}
-
-	if err != nil {
-		e.printer.TaskFailed(name, err)
-		return err
-	}
-
-	e.printer.TaskSucceeded(name)
-	return nil
 }
 
 // runShellTask executes a shell task in nix develop

@@ -50,7 +50,7 @@ func (p *Printer) TaskSucceeded(name string) {
 func (p *Printer) TaskSucceededWithDuration(name string, duration time.Duration) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Green("✓"), name, Gray(formatDuration(duration)))
+	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Green("✓"), name, Gray(FormatDuration(duration)))
 }
 
 // TaskFailed prints failure message and buffered output
@@ -69,7 +69,7 @@ func (p *Printer) TaskFailed(name string, err error) {
 func (p *Printer) TaskFailedWithDuration(name string, err error, duration time.Duration) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Red("✗"), name, Gray(formatDuration(duration)))
+	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Red("✗"), name, Gray(FormatDuration(duration)))
 
 	// Print buffered output if we have it
 	if buf, ok := p.buffers[name]; ok && buf.Len() > 0 {
@@ -84,8 +84,18 @@ func (p *Printer) TaskCached(name string) {
 	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Green("✓"), name, Gray("(cached)"))
 }
 
-// formatDuration formats a duration in a human-readable way
-func formatDuration(d time.Duration) string {
+// GetBuffer returns the buffered output for a task (empty if none or if verbose mode streamed it)
+func (p *Printer) GetBuffer(name string) string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if buf, ok := p.buffers[name]; ok {
+		return buf.String()
+	}
+	return ""
+}
+
+// FormatDuration formats a duration in a human-readable way
+func FormatDuration(d time.Duration) string {
 	if d < time.Second {
 		return fmt.Sprintf("(%dms)", d.Milliseconds())
 	}
