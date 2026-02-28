@@ -21,6 +21,7 @@ type ExecutorOptions struct {
 	Force      bool   // Bypass cache (re-run even if cached)
 	NoCache    bool   // Don't read or write cache
 	ProjectKey string // Cache key for project
+	RawTarget  string // If non-empty, pipe this task's output directly (no decoration)
 }
 
 // Executor runs tasks
@@ -44,9 +45,13 @@ func NewExecutor(eval *nix.Evaluator, cfg *config.Config, opts ExecutorOptions) 
 }
 
 // taskOutput returns the stdout and stderr writers for a task.
+// In raw mode, the target task's output pipes directly to os.Stdout/os.Stderr.
 // In verbose/streaming mode, output is prefixed with the task name.
 // Otherwise, output is buffered and only shown on failure.
 func (e *Executor) taskOutput(name string) (stdout, stderr io.Writer) {
+	if e.options.RawTarget == name {
+		return os.Stdout, os.Stderr
+	}
 	if e.options.Verbose {
 		pw := &prefixWriter{
 			prefix: fmt.Sprintf("[%s] ", name),

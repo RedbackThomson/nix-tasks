@@ -25,6 +25,7 @@ type RunCmd struct {
 	Stream          bool   `help:"Stream task output in real-time (default in CI)"`
 	Force           bool   `help:"Force re-run tasks even if cached"`
 	NoCache         bool   `help:"Disable caching (don't read or write cache)"`
+	Raw             bool   `help:"Pipe task output directly to stdout/stderr with no decoration"`
 }
 
 // Run executes the run command
@@ -68,14 +69,19 @@ func (c *RunCmd) Run(globals *Globals) error {
 		strategy = runner.ContinueOnError
 	}
 
-	// Determine output verbosity
-	// Use streaming if explicitly requested, or if in CI, or if verbose
-	verbose := globals.Verbose || c.Stream || runner.DetectOutputMode() == runner.Streaming
+	// Determine output verbosity (raw mode suppresses all decoration)
+	verbose := !c.Raw && (globals.Verbose || c.Stream || runner.DetectOutputMode() == runner.Streaming)
 
 	// Compute project key for caching
 	projectKey := ""
 	if !c.NoCache {
 		projectKey = cache.ProjectKey(globals.Flake)
+	}
+
+	// In raw mode, only the target task's output pipes directly
+	rawTarget := ""
+	if c.Raw {
+		rawTarget = c.Task
 	}
 
 	// Execute tasks
@@ -88,6 +94,7 @@ func (c *RunCmd) Run(globals *Globals) error {
 			Force:      c.Force,
 			NoCache:    c.NoCache,
 			ProjectKey: projectKey,
+			RawTarget:  rawTarget,
 		},
 		runner.ParallelExecutorOptions{
 			MaxJobs:  c.Jobs,
@@ -100,9 +107,11 @@ func (c *RunCmd) Run(globals *Globals) error {
 		return err
 	}
 
-	// Print dependency tree with results
-	fmt.Println()
-	printTree(graph, c.Task, results)
+	// Print dependency tree with results (skip in raw mode)
+	if !c.Raw {
+		fmt.Println()
+		printTree(graph, c.Task, results)
+	}
 
 	// Return error if any task failed
 	for _, r := range results {
