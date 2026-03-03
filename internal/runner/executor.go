@@ -22,6 +22,7 @@ type ExecutorOptions struct {
 	NoCache    bool   // Don't read or write cache
 	ProjectKey string // Cache key for project
 	RawTarget  string // If non-empty, pipe this task's output directly (no decoration)
+	Progress   *ui.ProgressDisplay // Live progress display (nil unless Progress mode)
 }
 
 // Executor runs tasks
@@ -52,6 +53,10 @@ func (e *Executor) taskOutput(name string) (stdout, stderr io.Writer) {
 	if e.options.RawTarget == name {
 		return os.Stdout, os.Stderr
 	}
+	if e.options.Progress != nil {
+		w := e.options.Progress.Writer(name)
+		return w, w
+	}
 	if e.options.Verbose {
 		pw := &prefixWriter{
 			prefix: fmt.Sprintf("[%s] ", name),
@@ -66,7 +71,11 @@ func (e *Executor) taskOutput(name string) (stdout, stderr io.Writer) {
 
 // RunTask executes a single task (dispatches to type-specific implementation)
 func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) error {
-	e.printer.TaskStarted(name)
+	if e.options.Progress != nil {
+		e.options.Progress.TaskStarted(name)
+	} else {
+		e.printer.TaskStarted(name)
+	}
 
 	// Default to shell type if not specified
 	taskType := task.Type

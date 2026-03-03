@@ -37,10 +37,6 @@ func (c *RunCmd) Run(globals *Globals) error {
 	// Handle interrupt signals
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		cancel()
-	}()
 
 	// Initialize Nix evaluator
 	eval := nix.NewEvaluator(globals.Flake)
@@ -69,8 +65,27 @@ func (c *RunCmd) Run(globals *Globals) error {
 		strategy = runner.ContinueOnError
 	}
 
-	// Determine output verbosity (raw mode suppresses all decoration)
-	verbose := !c.Raw && (globals.Verbose || c.Stream || runner.DetectOutputMode() == runner.Streaming)
+	// Determine output mode
+	outputMode := runner.DetectOutputMode()
+	verbose := !c.Raw && (globals.Verbose || c.Stream || outputMode == runner.Streaming)
+
+	// Create progress display for interactive terminals (not in raw or verbose mode)
+	var progress *ui.ProgressDisplay
+	useProgress := !c.Raw && !verbose && outputMode == runner.Progress
+	if useProgress {
+		progress = ui.NewProgressDisplay(ui.ProgressDisplayOptions{
+			TailLines: 5,
+		})
+	}
+
+	// Modified signal handler: clean up progress display before cancelling
+	go func() {
+		<-sigCh
+		if progress != nil {
+			progress.Stop()
+		}
+		cancel()
+	}()
 
 	// Compute project key for caching
 	projectKey := ""
@@ -84,6 +99,11 @@ func (c *RunCmd) Run(globals *Globals) error {
 		rawTarget = c.Task
 	}
 
+	// Start progress display before execution
+	if progress != nil {
+		progress.Start()
+	}
+
 	// Execute tasks
 	parallel := runner.NewParallelExecutor(
 		eval,
@@ -95,6 +115,7 @@ func (c *RunCmd) Run(globals *Globals) error {
 			NoCache:    c.NoCache,
 			ProjectKey: projectKey,
 			RawTarget:  rawTarget,
+			Progress:   progress,
 		},
 		runner.ParallelExecutorOptions{
 			MaxJobs:  c.Jobs,
@@ -103,6 +124,12 @@ func (c *RunCmd) Run(globals *Globals) error {
 	)
 
 	results, err := parallel.ExecuteDAG(ctx, graph, c.Task)
+
+	// Stop progress display (does final render, restores cursor)
+	if progress != nil {
+		progress.Stop()
+	}
+
 	if err != nil {
 		return err
 	}

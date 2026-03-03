@@ -82,26 +82,13 @@ func (p *ParallelExecutor) ExecuteDAG(ctx context.Context, graph *TaskGraph, tar
 	for _, group := range groups {
 		// Check if we should stop due to prior failure
 		if failed && p.strategy == FailFast {
-			// Mark remaining tasks as skipped
-			for _, name := range group {
-				results = append(results, TaskResult{
-					Name:    name,
-					Success: false,
-					Error:   context.Canceled,
-				})
-			}
+			results = append(results, p.skipTasks(group, context.Canceled)...)
 			continue
 		}
 
 		// Check for context cancellation before starting group
 		if ctx.Err() != nil {
-			for _, name := range group {
-				results = append(results, TaskResult{
-					Name:    name,
-					Success: false,
-					Error:   ctx.Err(),
-				})
-			}
+			results = append(results, p.skipTasks(group, ctx.Err())...)
 			break
 		}
 
@@ -131,6 +118,11 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 	var wg sync.WaitGroup
 
 	for i, name := range tasks {
+		// Register task with progress display before launching goroutine
+		if p.executor.options.Progress != nil {
+			p.executor.options.Progress.RegisterTask(name)
+		}
+
 		wg.Add(1)
 		go func(idx int, taskName string) {
 			defer wg.Done()
@@ -145,6 +137,9 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 					Success: false,
 					Error:   ctx.Err(),
 				}
+				if p.executor.options.Progress != nil {
+					p.executor.options.Progress.TaskSkipped(taskName)
+				}
 				return
 			}
 
@@ -154,6 +149,9 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 					Name:    taskName,
 					Success: false,
 					Error:   ctx.Err(),
+				}
+				if p.executor.options.Progress != nil {
+					p.executor.options.Progress.TaskSkipped(taskName)
 				}
 				return
 			}
@@ -174,13 +172,26 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 			cached, err := p.runTask(ctx, taskName, task)
 			duration := time.Since(start)
 
+			// Notify progress display of completion
+			if p.executor.options.Progress != nil {
+				p.executor.options.Progress.TaskFinished(taskName, err, duration, cached)
+			}
+
+			// Get buffered output from the appropriate source
+			output := ""
+			if p.executor.options.Progress != nil {
+				output = p.executor.options.Progress.GetBuffer(taskName)
+			} else {
+				output = p.executor.printer.GetBuffer(taskName)
+			}
+
 			results[idx] = TaskResult{
 				Name:     taskName,
 				Success:  err == nil,
 				Cached:   cached,
 				Error:    err,
 				Duration: duration,
-				Output:   p.executor.printer.GetBuffer(taskName),
+				Output:   output,
 			}
 		}(i, name)
 	}
@@ -231,6 +242,23 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 	}
 
 	return false, nil
+}
+
+// skipTasks marks a group of tasks as skipped and returns their results
+func (p *ParallelExecutor) skipTasks(tasks []string, err error) []TaskResult {
+	results := make([]TaskResult, len(tasks))
+	for i, name := range tasks {
+		if p.executor.options.Progress != nil {
+			p.executor.options.Progress.RegisterTask(name)
+			p.executor.options.Progress.TaskSkipped(name)
+		}
+		results[i] = TaskResult{
+			Name:    name,
+			Success: false,
+			Error:   err,
+		}
+	}
+	return results
 }
 
 // TaskNotFoundError indicates a task was not found

@@ -12,10 +12,12 @@ import (
 type OutputMode int
 
 const (
-	// Buffered collects output, shows on error (default for local)
+	// Buffered collects output, shows on error (fallback for non-TTY)
 	Buffered OutputMode = iota
 	// Streaming shows output in real-time with prefixes (default for CI)
 	Streaming
+	// Progress shows live spinner + tailing log output (default for interactive TTY)
+	Progress
 )
 
 // DetectOutputMode returns appropriate mode based on environment
@@ -23,7 +25,19 @@ func DetectOutputMode() OutputMode {
 	if os.Getenv("CI") != "" {
 		return Streaming
 	}
+	if isTerminal(os.Stdout) {
+		return Progress
+	}
 	return Buffered
+}
+
+// isTerminal returns true if the file is a terminal device
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 
 // OutputManager handles task output based on mode
