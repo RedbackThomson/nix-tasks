@@ -11,7 +11,7 @@ rec {
     env ? {},
     workingDir ? null,
     inputs ? [],
-    outputs ? [],
+    outputs ? {},
     continueOnError ? false,
     noCache ? false,
     ...

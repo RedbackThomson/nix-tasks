@@ -12,7 +12,7 @@
     env ? {},
     workingDir ? null,
     inputs ? [],
-    outputs ? [],
+    outputs ? {},
     continueOnError ? false,
     # Build task fields
     derivation ? null,
