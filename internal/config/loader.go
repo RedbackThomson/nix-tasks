@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/redbackthomson/nix-tasks/internal/nix"
 )
@@ -29,6 +30,7 @@ func Load(ctx context.Context, eval *nix.Evaluator) (*Config, error) {
 	// Try system-specific nixTasksConfig first (e.g., nixTasksConfig.aarch64-darwin)
 	err := eval.Eval(ctx, fmt.Sprintf("nixTasksConfig.%s", system), &cfg)
 	if err != nil {
+		slog.Debug("system-specific config eval failed, falling back", "error", err)
 		// Fall back to non-system-specific nixTasksConfig
 		err = eval.Eval(ctx, "nixTasksConfig", &cfg)
 		if err != nil {
