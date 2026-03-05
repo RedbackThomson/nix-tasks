@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // CurrentSystem returns the Nix system identifier for the current platform
@@ -79,6 +80,7 @@ func (e *Evaluator) Eval(ctx context.Context, attr string, result any) error {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	start := time.Now()
 	if err := cmd.Run(); err != nil {
 		return &EvalError{
 			Attribute: attr,
@@ -86,6 +88,7 @@ func (e *Evaluator) Eval(ctx context.Context, attr string, result any) error {
 			Err:       err,
 		}
 	}
+	slog.Debug("nix eval complete", "attr", attr, "duration", time.Since(start))
 
 	if err := json.Unmarshal(stdout.Bytes(), result); err != nil {
 		return fmt.Errorf("failed to parse nix output: %w", err)
@@ -108,6 +111,7 @@ func (e *Evaluator) Build(ctx context.Context, attr string) (string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
+	start := time.Now()
 	if err := cmd.Run(); err != nil {
 		return "", &BuildError{
 			Attribute: attr,
@@ -115,6 +119,7 @@ func (e *Evaluator) Build(ctx context.Context, attr string) (string, error) {
 			Err:       err,
 		}
 	}
+	slog.Debug("nix build complete", "attr", attr, "duration", time.Since(start))
 
 	return strings.TrimSpace(stdout.String()), nil
 }

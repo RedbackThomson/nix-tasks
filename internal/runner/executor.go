@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
@@ -118,9 +119,12 @@ func (e *Executor) runShellTask(ctx context.Context, name string, task config.Ta
 	}
 
 	// Execute
+	slog.Debug("starting nix develop shell", "task", name, "shell", shellAttr)
+	start := time.Now()
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("task '%s' failed: %w", name, err)
 	}
+	slog.Debug("nix develop shell exited", "task", name, "duration", time.Since(start))
 
 	return nil
 }
@@ -142,9 +146,12 @@ func (e *Executor) runBuildTask(ctx context.Context, name string, task config.Ta
 	cmd.Stdout, cmd.Stderr = e.taskOutput(name)
 
 	// Execute nix build
+	slog.Debug("starting nix build", "task", name, "drv", task.DrvPath)
+	start := time.Now()
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("nix build failed: %w", err)
 	}
+	slog.Debug("nix build exited", "task", name, "duration", time.Since(start))
 
 	// Link outputs to workspace
 	if err := e.linkBuildOutputs(name, task); err != nil {

@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"sort"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
@@ -43,10 +45,13 @@ func (c *RunCmd) Run(globals *Globals) error {
 	eval.SetDebug(globals.Debug)
 
 	// Load configuration
+	slog.Debug("loading config", "flake", globals.Flake)
+	configStart := time.Now()
 	cfg, err := config.Load(ctx, eval)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+	slog.Debug("config loaded", "duration", time.Since(configStart), "tasks", len(cfg.Tasks))
 
 	// Validate task exists
 	if _, ok := cfg.Tasks[c.Task]; !ok {
@@ -54,10 +59,12 @@ func (c *RunCmd) Run(globals *Globals) error {
 	}
 
 	// Build dependency graph
+	slog.Debug("building task graph")
 	graph, err := runner.NewTaskGraph(cfg.Tasks)
 	if err != nil {
 		return fmt.Errorf("failed to build task graph: %w", err)
 	}
+	slog.Debug("task graph built")
 
 	// Determine failure strategy
 	strategy := runner.FailFast
@@ -123,6 +130,7 @@ func (c *RunCmd) Run(globals *Globals) error {
 		},
 	)
 
+	slog.Debug("starting execution", "task", c.Task)
 	results, err := parallel.ExecuteDAG(ctx, graph, c.Task)
 
 	// Stop progress display (does final render, restores cursor)
