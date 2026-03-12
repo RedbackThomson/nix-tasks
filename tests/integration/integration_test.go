@@ -926,3 +926,107 @@ func TestMkGoTask_BuildsBinaryToCorrectLocation(t *testing.T) {
 		t.Errorf("expected 'Hello from mkGoTask!' in output, got: %s", stdout)
 	}
 }
+
+// =============================================================================
+// Task Modifier Tests
+// =============================================================================
+
+func TestRun_ModifiedCompoundTask(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "modifiers")
+
+	stdout, stderr, err := runNixTasks(t, binary, "run", "publish", "-f", flakePath, "-v")
+	if err != nil {
+		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Should run all tasks including the prepended one
+	for _, task := range []string{"helm-set-app-version", "ko-publish", "helm-publish", "publish"} {
+		if !strings.Contains(stdout, task) {
+			t.Errorf("expected '%s' in output, got: %s", task, stdout)
+		}
+	}
+
+	// helm-set-app-version should run before ko-publish (prepended dependency)
+	setPos := strings.Index(stdout, "helm-set-app-version")
+	koPos := strings.Index(stdout, "ko-publish")
+	if setPos > koPos {
+		t.Errorf("helm-set-app-version should run before ko-publish")
+	}
+}
+
+func TestRun_AppendedTaskDeps(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "modifiers")
+
+	stdout, stderr, err := runNixTasks(t, binary, "run", "publish-with-cleanup", "-f", flakePath, "-v")
+	if err != nil {
+		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Should run all tasks including the appended one
+	for _, task := range []string{"ko-publish", "helm-publish", "cleanup", "publish-with-cleanup"} {
+		if !strings.Contains(stdout, task) {
+			t.Errorf("expected '%s' in output, got: %s", task, stdout)
+		}
+	}
+}
+
+func TestRun_PipedModifications(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "modifiers")
+
+	stdout, stderr, err := runNixTasks(t, binary, "run", "build", "-f", flakePath, "-v")
+	if err != nil {
+		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Should include prepended and appended commands in output
+	if !strings.Contains(stdout, "Pre-build step") {
+		t.Errorf("expected 'Pre-build step' in output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Post-build step") {
+		t.Errorf("expected 'Post-build step' in output, got: %s", stdout)
+	}
+}
+
+func TestDescribe_ModifiedCompoundTask(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "modifiers")
+
+	stdout, stderr, err := runNixTasks(t, binary, "describe", "publish", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("nix-tasks describe failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Should show all three task dependencies
+	if !strings.Contains(stdout, "task:helm-set-app-version") {
+		t.Errorf("expected 'task:helm-set-app-version' in dependencies, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "task:ko-publish") {
+		t.Errorf("expected 'task:ko-publish' in dependencies, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "task:helm-publish") {
+		t.Errorf("expected 'task:helm-publish' in dependencies, got: %s", stdout)
+	}
+}
+
+func TestDescribe_PipedModifiedTask(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "modifiers")
+
+	stdout, stderr, err := runNixTasks(t, binary, "describe", "build", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("nix-tasks describe failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// Should show modified description
+	if !strings.Contains(stdout, "Build the app (customized)") {
+		t.Errorf("expected modified description, got: %s", stdout)
+	}
+}

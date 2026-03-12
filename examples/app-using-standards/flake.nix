@@ -41,6 +41,7 @@
             tasks = {
               # ------------------------------------------------------
               # Override the standard lint command with stricter settings
+              # Using compose markers (config-level merge)
               # ------------------------------------------------------
               lint = {
                 commands = lib.override [
@@ -49,25 +50,22 @@
               };
 
               # ------------------------------------------------------
-              # Add additional test commands to the standard test
+              # Modify standard test using task modifiers
+              # These operate directly on the task attr set
               # ------------------------------------------------------
-              test-unit = {
-                # Prepend a setup step
-                commands = lib.prepend [
-                  "echo 'Running app-specific test setup...'"
-                ];
-              };
+              test-unit = lib.prependCommands
+                [ "echo 'Running app-specific test setup...'" ]
+                standards.tasks.test-unit;
 
               # ------------------------------------------------------
-              # Add repo-specific build task
+              # Modify standard build using pipe for multiple changes
               # ------------------------------------------------------
-              build = {
-                # Override the standard build command for this repo
-                commands = lib.override [
+              build = lib.pipe standards.tasks.build [
+                (lib.overrideCommands [
                   "go build -ldflags '-s -w' -o bin/myservice ./cmd/myservice"
-                ];
-                outputs = [ "bin/myservice" ];
-              };
+                ])
+                (lib.mergeEnv { BUILD_VERSION = "1.0.0"; })
+              ];
 
               # ------------------------------------------------------
               # Add project-specific tasks
@@ -125,10 +123,11 @@
                 tasks = [ "lint" "test-unit" "build" ];
               };
 
-              all = lib.mkCompoundTask {
+              # Extend a compound task: prepend proto-gen before everything
+              all = lib.prependTaskDeps [ "proto-gen" ] (lib.mkCompoundTask {
                 description = "Build everything";
-                tasks = [ "proto-gen" "build" "build-frontend" ];
-              };
+                tasks = [ "build" "build-frontend" ];
+              });
 
               # ------------------------------------------------------
               # Make compatibility - wrap legacy targets during migration

@@ -454,6 +454,63 @@ tasks.ci = lib.mkCompoundTask {
 };
 ```
 
+### Task Modifiers
+
+Task modifiers let you customize existing tasks without redefining them from
+scratch. This is especially useful when extending standardized configurations in
+a repository.
+
+#### Modifying task dependencies
+
+```nix
+# Prepend a step before the existing dependencies
+tasks.publish = lib.prependTaskDeps [ "generate-bindings" ] standards.tasks.publish;
+
+# Append a step after
+tasks.publish = lib.appendTaskDeps [ "notify" ] standards.tasks.publish;
+```
+
+#### Modifying commands
+
+```nix
+# Prepend a setup step to existing commands
+tasks.test = lib.prependCommands
+  [ "echo 'Running setup...'" ]
+  standards.tasks.test;
+
+# Override commands entirely
+tasks.build = lib.overrideCommands
+  [ "go build -o bin/myservice ./cmd/myservice" ]
+  standards.tasks.build;
+```
+
+#### Chaining modifications with pipe
+
+Apply multiple modifications at once using `lib.pipe`:
+
+```nix
+tasks.build = lib.pipe standards.tasks.build [
+  (lib.overrideCommands [ "go build -o bin/myservice ./cmd/myservice" ])
+  (lib.appendDeps [ "protobuf" ])
+  (lib.mergeEnv { BUILD_VERSION = "1.0.0"; })
+  (lib.setDescription "Build myservice")
+];
+```
+
+#### Available modifiers
+
+| Modifier | Description |
+|----------|-------------|
+| `prependTaskDeps` / `appendTaskDeps` / `overrideTaskDeps` | Modify task dependencies |
+| `prependDeps` / `appendDeps` / `overrideDeps` | Modify package dependencies |
+| `prependCommands` / `appendCommands` / `overrideCommands` | Modify shell commands |
+| `mergeEnv` / `overrideEnv` | Modify environment variables |
+| `appendInputs` / `overrideInputs` | Modify input file patterns |
+| `setDescription` / `setWorkingDir` / `setNoCache` / `setContinueOnError` | Set task metadata |
+| `pipe` | Apply a list of modifiers sequentially |
+
+All modifiers are curried (`modification -> task -> task`) so they work with partial application and `pipe`.
+
 ### Dev Shells
 
 Define development environments with shell inheritance:
