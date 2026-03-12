@@ -27,6 +27,15 @@
             commands = [ "echo 'Building...'" ];
             env = { APP_NAME = "myapp"; };
           };
+
+          # A task that uses script instead of commands
+          baseScript = lib.mkTask {
+            description = "Script-based task";
+            script = ''
+              echo 'Script line 1'
+              echo 'Script line 2'
+            '';
+          };
         in lib.evalConfig {
           packages = {};
 
@@ -70,6 +79,12 @@
             build-override = lib.overrideCommands
               [ "echo 'Completely new build'" ]
               baseBuild;
+
+            # Modified script task: prepend and append commands around a script
+            script-modified = lib.pipe baseScript [
+              (lib.prependCommands [ "echo 'Before script'" ])
+              (lib.appendCommands [ "echo 'After script'" ])
+            ];
           };
 
           devShells = {

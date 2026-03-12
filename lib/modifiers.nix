@@ -55,15 +55,28 @@ rec {
     task // { deps = packages; };
 
   # Command modifiers (commands field)
+  # These handle tasks that use `script` instead of `commands` by converting
+  # the script into a commands entry, so prepended/appended commands run in
+  # the expected order.
+
+  # Resolve a task's effective commands list, folding `script` into `commands`
+  # if present. Returns a plain list of command strings.
+  effectiveCommands = task:
+    if (task.script or null) != null && task.script != ""
+    then [ task.script ]
+    else (task.commands or []);
+
+  # Clear the script field so the runner uses commands instead
+  clearScript = task: task // { script = null; };
 
   prependCommands = cmds: task:
-    task // { commands = cmds ++ (task.commands or []); };
+    clearScript (task // { commands = cmds ++ (effectiveCommands task); });
 
   appendCommands = cmds: task:
-    task // { commands = (task.commands or []) ++ cmds; };
+    clearScript (task // { commands = (effectiveCommands task) ++ cmds; });
 
   overrideCommands = cmds: task:
-    task // { commands = cmds; };
+    clearScript (task // { commands = cmds; });
 
   # Environment variable modifiers (env field)
 

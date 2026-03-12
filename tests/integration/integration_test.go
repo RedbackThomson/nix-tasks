@@ -1030,3 +1030,33 @@ func TestDescribe_PipedModifiedTask(t *testing.T) {
 		t.Errorf("expected modified description, got: %s", stdout)
 	}
 }
+
+func TestRun_ScriptWithPrependedAndAppendedCommands(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "modifiers")
+
+	stdout, stderr, err := runNixTasks(t, binary, "run", "script-modified", "-f", flakePath, "-v")
+	if err != nil {
+		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	// All three parts should appear: prepended commands, original script, appended commands
+	if !strings.Contains(stdout, "Before script") {
+		t.Errorf("expected 'Before script' in output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Script line 1") {
+		t.Errorf("expected 'Script line 1' in output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "After script") {
+		t.Errorf("expected 'After script' in output, got: %s", stdout)
+	}
+
+	// Verify ordering
+	beforePos := strings.Index(stdout, "Before script")
+	scriptPos := strings.Index(stdout, "Script line 1")
+	afterPos := strings.Index(stdout, "After script")
+	if beforePos > scriptPos || scriptPos > afterPos {
+		t.Errorf("commands not in expected order: before=%d, script=%d, after=%d", beforePos, scriptPos, afterPos)
+	}
+}
