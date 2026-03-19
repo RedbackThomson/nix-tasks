@@ -101,7 +101,11 @@ func (w *prefixWriter) Write(p []byte) (n int, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	lines := bytes.Split(p, []byte("\n"))
+	// Strip \r before splitting — tools like curl use \r to overwrite
+	// progress in-place, which garbles prefixed output.
+	cleaned := bytes.ReplaceAll(p, []byte("\r"), nil)
+
+	lines := bytes.Split(cleaned, []byte("\n"))
 	for i, line := range lines {
 		if len(line) > 0 || i < len(lines)-1 {
 			_, _ = fmt.Fprintf(w.out, "%s%s\n", w.prefix, line)
