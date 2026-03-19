@@ -38,13 +38,18 @@ func (tw *tailWriter) Write(p []byte) (int, error) {
 
 	n := len(p)
 
-	// Always write to full buffer
+	// Always write to full buffer (unmodified)
 	tw.state.mu.Lock()
 	tw.state.fullBuf.Write(p)
 	tw.state.mu.Unlock()
 
+	// Strip \r before line-splitting for the ring buffer.
+	// Tools like `go test` emit \r for in-place progress updates;
+	// these corrupt the progress display's ANSI cursor positioning.
+	cleaned := bytes.ReplaceAll(p, []byte("\r"), nil)
+
 	// Split into lines for the ring buffer
-	remaining := p
+	remaining := cleaned
 	for len(remaining) > 0 {
 		idx := bytes.IndexByte(remaining, '\n')
 		if idx == -1 {

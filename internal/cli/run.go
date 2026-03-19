@@ -142,10 +142,16 @@ func (c *RunCmd) Run(globals *Globals) error {
 		return err
 	}
 
-	// Print dependency tree with results (skip in raw mode)
+	// Print results (skip in raw mode)
 	if !c.Raw {
-		fmt.Println()
-		printTree(graph, c.Task, results)
+		if useProgress {
+			// Progress display already showed per-task status; just print summary
+			fmt.Println()
+			printSummary(results)
+		} else {
+			fmt.Println()
+			printTree(graph, c.Task, results)
+		}
 	}
 
 	// Return error if any task failed
@@ -166,8 +172,11 @@ func printTree(graph *runner.TaskGraph, target string, results []runner.TaskResu
 	}
 
 	printTreeNode(graph, target, resultMap, 0)
+	printSummary(results)
+}
 
-	// Print summary line
+// printSummary prints the "Completed: N tasks (...)" summary line
+func printSummary(results []runner.TaskResult) {
 	var passed, failed, skipped int
 	for _, r := range results {
 		switch {
