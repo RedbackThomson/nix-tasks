@@ -19,6 +19,8 @@ import (
 	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
+const failedOutputTailLines = 50
+
 // RunCmd runs a task
 type RunCmd struct {
 	Task            string `arg:"" help:"Task name to run"`
@@ -145,9 +147,14 @@ func (c *RunCmd) Run(globals *Globals) error {
 	// Print results (skip in raw mode)
 	if !c.Raw {
 		if useProgress {
-			// Progress display already showed per-task status; just print summary
+			// Progress display already showed per-task status; print summary then failed output
 			fmt.Println()
 			printSummary(results)
+			for _, r := range results {
+				if !r.Success && r.Output != "" && !errors.Is(r.Error, context.Canceled) {
+					printFailedOutput(r)
+				}
+			}
 		} else {
 			fmt.Println()
 			printTree(graph, c.Task, results)
@@ -235,8 +242,12 @@ func printTreeNode(graph *runner.TaskGraph, name string, results map[string]runn
 
 	// Print buffered output for failed tasks
 	if ok && !r.Success && r.Output != "" && !errors.Is(r.Error, context.Canceled) {
-		for _, line := range strings.Split(strings.TrimRight(r.Output, "\n"), "\n") {
+		tail, tmpFile := tailAndSave(r.Name, r.Output)
+		for _, line := range strings.Split(strings.TrimRight(tail, "\n"), "\n") {
 			fmt.Printf("%s    %s\n", indent, line)
+		}
+		if tmpFile != "" {
+			fmt.Printf("%s    %s\n", indent, ui.Gray("full output: "+tmpFile))
 		}
 	}
 
@@ -246,4 +257,36 @@ func printTreeNode(graph *runner.TaskGraph, name string, results map[string]runn
 	for _, dep := range deps {
 		printTreeNode(graph, dep, results, depth+1)
 	}
+}
+
+// printFailedOutput prints the tail of a failed task's output and its temp log file path
+func printFailedOutput(r runner.TaskResult) {
+	tail, tmpFile := tailAndSave(r.Name, r.Output)
+	fmt.Printf("%s %s\n", ui.Red("✗"), r.Name)
+	for _, line := range strings.Split(strings.TrimRight(tail, "\n"), "\n") {
+		fmt.Printf("    %s\n", line)
+	}
+	if tmpFile != "" {
+		fmt.Printf("    %s\n", ui.Gray("full output: "+tmpFile))
+	}
+}
+
+// tailAndSave returns the last failedOutputTailLines lines of output, and writes
+// the full output to a temp file. Returns the tail string and the temp file path
+// (empty if writing failed or output was short enough to not need truncation).
+func tailAndSave(taskName, output string) (tail string, tmpFile string) {
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+
+	// Write full output to a temp file
+	if f, err := os.CreateTemp("", "nix-tasks-"+taskName+"-*.log"); err == nil {
+		f.WriteString(output)
+		f.Close()
+		tmpFile = f.Name()
+	}
+
+	if len(lines) > failedOutputTailLines {
+		omitted := len(lines) - failedOutputTailLines
+		lines = append([]string{ui.Gray(fmt.Sprintf("... %d lines omitted ...", omitted))}, lines[len(lines)-failedOutputTailLines:]...)
+	}
+	return strings.Join(lines, "\n"), tmpFile
 }
