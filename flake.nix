@@ -30,6 +30,13 @@
               vendorHash = "sha256-48Va8grh1BHGxZgwHKWvsB+HvBmmxD78cEDWl1Ysn4Y=";
               CGO_ENABLED = "0";
               ldflags = [ "-s" "-w" ];
+              nativeBuildInputs = [ pkgs.installShellFiles ];
+              postInstall = ''
+                installShellCompletion --cmd nix-tasks \
+                  --bash <($out/bin/nix-tasks completions bash) \
+                  --zsh <($out/bin/nix-tasks completions zsh) \
+                  --fish <($out/bin/nix-tasks completions fish)
+              '';
             };
 
             # Run Go tests
@@ -94,6 +101,11 @@
               shellHook = ''
                 echo "nix-tasks development shell"
                 echo "Available commands: go, golangci-lint"
+                case "$SHELL" in
+                  */bash) source <(nix-tasks completions bash) ;;
+                  */zsh)  source <(nix-tasks completions zsh) ;;
+                  */fish) nix-tasks completions fish | source ;;
+                esac
               '';
             };
           };
