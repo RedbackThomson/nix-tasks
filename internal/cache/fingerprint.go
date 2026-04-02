@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/redbackthomson/nix-tasks/internal/config"
 )
 
@@ -76,16 +77,20 @@ func ComputeFingerprint(task config.Task, packages map[string]string, workDir st
 func hashInputFiles(h io.Writer, workDir string, patterns []string) error {
 	var files []string
 
+	baseDir := workDir
+	if baseDir == "" {
+		baseDir = "."
+	}
+	fsys := os.DirFS(baseDir)
+
 	for _, pattern := range patterns {
-		fullPattern := pattern
-		if workDir != "" {
-			fullPattern = filepath.Join(workDir, pattern)
-		}
-		matches, err := filepath.Glob(fullPattern)
+		matches, err := doublestar.Glob(fsys, pattern)
 		if err != nil {
 			return err
 		}
-		files = append(files, matches...)
+		for _, m := range matches {
+			files = append(files, filepath.Join(baseDir, m))
+		}
 	}
 
 	// Sort for determinism
