@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -157,7 +156,14 @@ func (c *RunCmd) Run(globals *Globals) error {
 			}
 		} else {
 			fmt.Println()
-			printTree(graph, c.Task, results)
+			resultMap := make(map[string]runner.TaskResult, len(results))
+			execSet := make(map[string]bool, len(results))
+			for _, r := range results {
+				resultMap[r.Name] = r
+				execSet[r.Name] = true
+			}
+			printTree(graph, c.Task, execSet, resultMap)
+			printSummary(results)
 		}
 	}
 
@@ -169,17 +175,6 @@ func (c *RunCmd) Run(globals *Globals) error {
 	}
 
 	return nil
-}
-
-// printTree prints an ASCII dependency tree with results and a summary line
-func printTree(graph *runner.TaskGraph, target string, results []runner.TaskResult) {
-	resultMap := make(map[string]runner.TaskResult)
-	for _, r := range results {
-		resultMap[r.Name] = r
-	}
-
-	printTreeNode(graph, target, resultMap, 0)
-	printSummary(results)
 }
 
 // printSummary prints the "Completed: N tasks (...)" summary line
@@ -211,52 +206,6 @@ func printSummary(results []runner.TaskResult) {
 		fmt.Printf(" (%s)", strings.Join(parts, ", "))
 	}
 	fmt.Println()
-}
-
-// printTreeNode recursively prints a task and its dependencies as an indented tree
-func printTreeNode(graph *runner.TaskGraph, name string, results map[string]runner.TaskResult, depth int) {
-	r, ok := results[name]
-	indent := strings.Repeat("  ", depth)
-
-	// Determine status symbol
-	status := ui.Green("✓")
-	if ok && !r.Success {
-		if errors.Is(r.Error, context.Canceled) {
-			status = ui.Gray("-")
-		} else {
-			status = ui.Red("✗")
-		}
-	}
-
-	// Determine suffix (duration or cached)
-	suffix := ""
-	if ok {
-		if r.Cached {
-			suffix = " " + ui.Gray("(cached)")
-		} else if r.Duration > 0 {
-			suffix = " " + ui.Gray(ui.FormatDuration(r.Duration))
-		}
-	}
-
-	fmt.Printf("%s%s %s%s\n", indent, status, name, suffix)
-
-	// Print buffered output for failed tasks
-	if ok && !r.Success && r.Output != "" && !errors.Is(r.Error, context.Canceled) {
-		tail, tmpFile := tailAndSave(r.Name, r.Output)
-		for _, line := range strings.Split(strings.TrimRight(tail, "\n"), "\n") {
-			fmt.Printf("%s    %s\n", indent, line)
-		}
-		if tmpFile != "" {
-			fmt.Printf("%s    %s\n", indent, ui.Gray("full output: "+tmpFile))
-		}
-	}
-
-	// Print children (dependencies)
-	deps := graph.Dependencies(name)
-	sort.Strings(deps)
-	for _, dep := range deps {
-		printTreeNode(graph, dep, results, depth+1)
-	}
 }
 
 // printFailedOutput prints the tail of a failed task's output and its temp log file path

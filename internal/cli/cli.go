@@ -14,6 +14,7 @@ type CLI struct {
 	Run         RunCmd         `cmd:"" help:"Run a task"`
 	List        ListCmd        `cmd:"" help:"List available tasks and shells"`
 	Describe    DescribeCmd    `cmd:"" help:"Show task details"`
+	Graph       GraphCmd       `cmd:"" help:"Show execution graph for a task"`
 	Shell       ShellCmd       `cmd:"" help:"Enter a development shell"`
 	Cache       CacheCmd       `cmd:"" help:"Cache management commands"`
 	Validate    ValidateCmd    `cmd:"" help:"Validate configuration"`

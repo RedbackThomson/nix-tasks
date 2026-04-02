@@ -224,7 +224,22 @@ Depended on by:
   - deploy
 ```
 
-### 5. Validate configuration
+### 5. Show execution graph
+
+```bash
+$ nix run github:redbackthomson/nix-tasks -- graph deploy
+
+deploy
+  build
+    compile
+    lint
+  test
+    build *
+```
+
+The tree shows every task that would execute when running the target. Tasks that appear more than once are marked with `*` and not expanded again.
+
+### 6. Validate configuration
 
 ```bash
 $ nix run github:redbackthomson/nix-tasks -- validate
@@ -246,6 +261,7 @@ Commands:
   run <task>       Run a task (with dependencies)
   list             List available tasks and shells
   describe <task>  Show task details
+  graph <task>     Show execution graph for a task
   shell [name]     Enter a development shell
   cache clean      Clear the task cache
   cache stats      Show cache statistics
