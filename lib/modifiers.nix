@@ -43,6 +43,21 @@ rec {
   overrideTaskDeps = names: task:
     task // { depends = taskRefs names; };
 
+  # After-hook modifiers (after field with "task:" prefix)
+
+  # Prepend after-hook targets
+  # prependAfterHooks ["build"] myTask => adds "task:build" before existing after
+  prependAfterHooks = names: task:
+    task // { after = (taskRefs names) ++ (task.after or []); };
+
+  # Append after-hook targets
+  appendAfterHooks = names: task:
+    task // { after = (task.after or []) ++ (taskRefs names); };
+
+  # Override all after-hook targets
+  overrideAfterHooks = names: task:
+    task // { after = taskRefs names; };
+
   # Package dependency modifiers (deps field)
 
   prependDeps = packages: task:

@@ -359,6 +359,196 @@ func TestTaskGraph_Dependencies(t *testing.T) {
 	}
 }
 
+func TestNewTaskGraph_AfterHooks(t *testing.T) {
+	tests := []struct {
+		name    string
+		tasks   map[string]config.Task
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid after-hook",
+			tasks: map[string]config.Task{
+				"build": {},
+				"hook":  {After: []string{"task:build"}},
+			},
+			wantErr: false,
+		},
+		{
+			name: "unknown after-hook target",
+			tasks: map[string]config.Task{
+				"hook": {After: []string{"task:missing"}},
+			},
+			wantErr: true,
+			errMsg:  "unknown task",
+		},
+		{
+			name: "cycle via after and depends",
+			tasks: map[string]config.Task{
+				"a": {After: []string{"task:b"}},
+				"b": {Depends: []string{"task:a"}},
+			},
+			wantErr: true,
+			errMsg:  "circular dependency",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := runner.NewTaskGraph(tt.tasks)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewTaskGraph() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("NewTaskGraph() error = %v, want error containing %q", err, tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+func TestTaskGraph_ExecutionOrder_AfterHooks(t *testing.T) {
+	tests := []struct {
+		name      string
+		tasks     map[string]config.Task
+		target    string
+		wantTasks []string // expected tasks in execution set (order checked for first/last)
+		wantFirst string
+		wantLast  string
+	}{
+		{
+			name: "basic after-hook pulls in hook task",
+			tasks: map[string]config.Task{
+				"build": {},
+				"hook":  {After: []string{"task:build"}},
+			},
+			target:    "build",
+			wantTasks: []string{"build", "hook"},
+			wantFirst: "build",
+			wantLast:  "hook",
+		},
+		{
+			name: "after-hook not triggered when target not run",
+			tasks: map[string]config.Task{
+				"build":   {},
+				"hook":    {After: []string{"task:build"}},
+				"unrelated": {},
+			},
+			target:    "unrelated",
+			wantTasks: []string{"unrelated"},
+			wantFirst: "unrelated",
+			wantLast:  "unrelated",
+		},
+		{
+			name: "transitive after-hooks",
+			tasks: map[string]config.Task{
+				"a": {},
+				"b": {After: []string{"task:a"}},
+				"c": {After: []string{"task:b"}},
+			},
+			target:    "a",
+			wantTasks: []string{"a", "b", "c"},
+			wantFirst: "a",
+			wantLast:  "c",
+		},
+		{
+			name: "after-hook with its own depends",
+			tasks: map[string]config.Task{
+				"a":    {},
+				"d":    {},
+				"hook": {After: []string{"task:a"}, Depends: []string{"task:d"}},
+			},
+			target:    "a",
+			wantTasks: []string{"a", "d", "hook"},
+			wantFirst: "a", // a or d could be first depending on order, but a has no deps
+			wantLast:  "hook",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			graph, err := runner.NewTaskGraph(tt.tasks)
+			if err != nil {
+				t.Fatalf("NewTaskGraph() error = %v", err)
+			}
+
+			order, err := graph.ExecutionOrder(tt.target)
+			if err != nil {
+				t.Fatalf("ExecutionOrder() error = %v", err)
+			}
+
+			if len(order) != len(tt.wantTasks) {
+				t.Errorf("ExecutionOrder() len = %d, want %d; got %v", len(order), len(tt.wantTasks), order)
+			}
+
+			// Check all expected tasks are present
+			for _, want := range tt.wantTasks {
+				if !contains(order, want) {
+					t.Errorf("ExecutionOrder() missing task %q; got %v", want, order)
+				}
+			}
+
+			// Check last task
+			if len(order) > 0 && order[len(order)-1] != tt.wantLast {
+				t.Errorf("ExecutionOrder() last = %s, want %s; got %v", order[len(order)-1], tt.wantLast, order)
+			}
+		})
+	}
+}
+
+func TestTaskGraph_ParallelGroups_AfterHooks(t *testing.T) {
+	tasks := map[string]config.Task{
+		"build":     {},
+		"post-hook": {After: []string{"task:build"}},
+	}
+
+	graph, err := runner.NewTaskGraph(tasks)
+	if err != nil {
+		t.Fatalf("NewTaskGraph() error = %v", err)
+	}
+
+	groups, err := graph.ParallelGroups("build")
+	if err != nil {
+		t.Fatalf("ParallelGroups() error = %v", err)
+	}
+
+	if len(groups) != 2 {
+		t.Fatalf("expected 2 groups, got %d: %v", len(groups), groups)
+	}
+
+	if len(groups[0]) != 1 || groups[0][0] != "build" {
+		t.Errorf("group 0 should be [build], got %v", groups[0])
+	}
+
+	if len(groups[1]) != 1 || groups[1][0] != "post-hook" {
+		t.Errorf("group 1 should be [post-hook], got %v", groups[1])
+	}
+}
+
+func TestTaskGraph_AfterHooks_Accessor(t *testing.T) {
+	tasks := map[string]config.Task{
+		"build":  {},
+		"hook-a": {After: []string{"task:build"}},
+		"hook-b": {After: []string{"task:build"}},
+	}
+
+	graph, err := runner.NewTaskGraph(tasks)
+	if err != nil {
+		t.Fatalf("NewTaskGraph() error = %v", err)
+	}
+
+	hooks := graph.AfterHooks("build")
+	if len(hooks) != 2 {
+		t.Errorf("AfterHooks(build) = %v, want 2 hooks", hooks)
+	}
+
+	if !contains(hooks, "hook-a") || !contains(hooks, "hook-b") {
+		t.Errorf("AfterHooks(build) = %v, want [hook-a, hook-b]", hooks)
+	}
+}
+
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
 		if s == item {

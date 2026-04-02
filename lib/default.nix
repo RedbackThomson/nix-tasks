@@ -72,6 +72,7 @@ in {
 
   # Convenience: task modifiers
   inherit (modifiers) prependTaskDeps appendTaskDeps overrideTaskDeps
+                       prependAfterHooks appendAfterHooks overrideAfterHooks
                        prependDeps appendDeps overrideDeps
                        prependCommands appendCommands overrideCommands
                        mergeEnv overrideEnv

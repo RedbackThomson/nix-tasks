@@ -11,8 +11,9 @@ This example shows:
 3. **Adding project packages** - Node.js, protobuf tools for this specific service
 4. **Customizing standard tasks** - Override lint config, add test setup
 5. **Adding new tasks** - Proto generation, frontend build, Docker, deployment
-6. **Extending dev shells** - Add packages to standard shells
-7. **Make compatibility** - Import legacy Make targets during migration
+6. **After-hooks** - Hook onto standard tasks without modifying them
+7. **Extending dev shells** - Add packages to standard shells
+8. **Make compatibility** - Import legacy Make targets during migration
 
 ## Usage
 
@@ -94,6 +95,12 @@ New tasks added for this service:
 - `docker-build` - Build Docker image
 - `deploy-staging` - Deploy to staging environment
 
+#### After-Hooks
+
+These tasks run automatically whenever their target task runs, without modifying the target:
+
+- `generate-sbom` - Generates a software bill of materials (runs after `build`)
+
 #### Compound Tasks
 
 - `ci` - Full CI pipeline (lint + test-unit + build)
@@ -164,7 +171,21 @@ devShells.default = {
 };
 ```
 
-### 5. Create New Shells
+### 5. Hook onto Standard Tasks with After
+
+Run a task automatically whenever a standard task runs, without modifying the standard task's definition:
+
+```nix
+tasks.generate-sbom = lib.mkTask {
+  description = "Generate SBOM after build";
+  after = [ "task:build" ];  # Runs whenever "build" runs
+  commands = [ "generate-sbom > sbom.json" ];
+};
+```
+
+When you run `nix-tasks run build`, both `build` and `generate-sbom` will execute in order. This is ideal for extending shared tasks since you don't need to touch the original task definition.
+
+### 6. Create New Shells
 
 Define project-specific shells:
 

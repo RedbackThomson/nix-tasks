@@ -93,6 +93,29 @@ func TestValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "unknown after-hook target",
+			config: &config.Config{
+				Packages: map[string]string{},
+				Tasks: map[string]config.Task{
+					"hook": {After: []string{"task:build"}},
+				},
+				DevShells: map[string]config.Shell{},
+			},
+			wantErr: true,
+		},
+		{
+			name: "valid after-hook target",
+			config: &config.Config{
+				Packages: map[string]string{},
+				Tasks: map[string]config.Task{
+					"build": {},
+					"hook":  {After: []string{"task:build"}},
+				},
+				DevShells: map[string]config.Shell{},
+			},
+			wantErr: false,
+		},
+		{
 			name: "empty config",
 			config: &config.Config{
 				Packages:  map[string]string{},

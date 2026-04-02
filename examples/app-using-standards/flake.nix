@@ -116,6 +116,20 @@
               };
 
               # ------------------------------------------------------
+              # After-hooks: run automatically after a standard task
+              # These let you hook into standard tasks without modifying
+              # their definitions - ideal for extending shared configs.
+              # ------------------------------------------------------
+              generate-sbom = lib.mkTask {
+                description = "Generate software bill of materials after build";
+                after = [ "task:build" ];
+                commands = [
+                  "echo 'Generating SBOM from build artifacts...'"
+                  "echo '{\"format\": \"cyclonedx\", \"components\": []}' > sbom.json"
+                ];
+              };
+
+              # ------------------------------------------------------
               # Compound tasks
               # ------------------------------------------------------
               ci = lib.mkCompoundTask {

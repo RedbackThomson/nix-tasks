@@ -32,7 +32,7 @@ func nixTasksBinary(t *testing.T) string {
 	tmpDir := t.TempDir()
 	binary := filepath.Join(tmpDir, "nix-tasks")
 
-	cmd := exec.Command("go", "build", "-o", binary, "../../cmd/nix-tasks")
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binary, "../../cmd/nix-tasks")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("failed to build nix-tasks: %v\n%s", err, output)
 	}
@@ -1058,5 +1058,199 @@ func TestRun_ScriptWithPrependedAndAppendedCommands(t *testing.T) {
 	afterPos := strings.Index(stdout, "After script")
 	if beforePos > scriptPos || scriptPos > afterPos {
 		t.Errorf("commands not in expected order: before=%d, script=%d, after=%d", beforePos, scriptPos, afterPos)
+	}
+}
+
+// =============================================================================
+// After-Hooks Tests
+// =============================================================================
+
+func TestList_AfterHooks(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "after-hooks")
+
+	stdout, stderr, err := runNixTasks(t, binary, "list", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("nix-tasks list failed: %v\nstderr: %s", err, stderr)
+	}
+
+	expectedTasks := []string{"build", "post-build", "unrelated", "chain-a", "chain-b", "chain-c", "deploy", "post-deploy", "setup", "test", "coverage-report", "notify"}
+	for _, task := range expectedTasks {
+		if !strings.Contains(stdout, task) {
+			t.Errorf("expected '%s' task in output, got: %s", task, stdout)
+		}
+	}
+}
+
+func TestRun_BasicAfterHook(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "after-hooks")
+
+	// Running "build" should also run "post-build" (its after-hook)
+	stdout, stderr, err := runNixTasks(t, binary, "run", "build", "-f", flakePath, "-v")
+	if err != nil {
+		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	if !strings.Contains(stdout, "build") {
+		t.Errorf("expected 'build' in output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "post-build") {
+		t.Errorf("expected 'post-build' in output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "2 tasks") {
+		t.Errorf("expected '2 tasks' in summary, got: %s", stdout)
+	}
+
+	// Verify order: build before post-build
+	buildPos := strings.Index(stdout, "Building...")
+	postBuildPos := strings.Index(stdout, "Post-build hook ran")
+	if buildPos > postBuildPos {
+		t.Errorf("build should run before post-build: build=%d, post-build=%d", buildPos, postBuildPos)
+	}
+}
+
+func TestRun_AfterHookNotTriggered(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "after-hooks")
+
+	// Running "unrelated" should NOT pull in "post-build"
+	stdout, stderr, err := runNixTasks(t, binary, "run", "unrelated", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	if !strings.Contains(stdout, "unrelated") {
+		t.Errorf("expected 'unrelated' in output, got: %s", stdout)
+	}
+	if strings.Contains(stdout, "post-build") {
+		t.Errorf("post-build should NOT be in output when running unrelated, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "1 tasks") {
+		t.Errorf("expected '1 tasks' in summary, got: %s", stdout)
+	}
+}
+
+func TestRun_TransitiveAfterHooks(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "after-hooks")
+
+	// Running "chain-a" should transitively pull in chain-b and chain-c
+	stdout, stderr, err := runNixTasks(t, binary, "run", "chain-a", "-f", flakePath, "-v")
+	if err != nil {
+		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	for _, task := range []string{"chain-a", "chain-b", "chain-c"} {
+		if !strings.Contains(stdout, task) {
+			t.Errorf("expected '%s' in output, got: %s", task, stdout)
+		}
+	}
+	if !strings.Contains(stdout, "3 tasks") {
+		t.Errorf("expected '3 tasks' in summary, got: %s", stdout)
+	}
+
+	// Verify order: a before b before c
+	aPos := strings.Index(stdout, "Chain A")
+	bPos := strings.Index(stdout, "Chain B")
+	cPos := strings.Index(stdout, "Chain C")
+	if aPos > bPos || bPos > cPos {
+		t.Errorf("tasks not in correct order: a=%d, b=%d, c=%d", aPos, bPos, cPos)
+	}
+}
+
+func TestRun_AfterHookWithDepends(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "after-hooks")
+
+	// Running "deploy" should pull in post-deploy (via after),
+	// and post-deploy's dependency "setup" should also be included
+	stdout, stderr, err := runNixTasks(t, binary, "run", "deploy", "-f", flakePath, "-v")
+	if err != nil {
+		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	for _, task := range []string{"setup", "deploy", "post-deploy"} {
+		if !strings.Contains(stdout, task) {
+			t.Errorf("expected '%s' in output, got: %s", task, stdout)
+		}
+	}
+	if !strings.Contains(stdout, "3 tasks") {
+		t.Errorf("expected '3 tasks' in summary, got: %s", stdout)
+	}
+
+	// post-deploy must run after both deploy and setup
+	deployPos := strings.Index(stdout, "Deploying...")
+	setupPos := strings.Index(stdout, "Setup")
+	postDeployPos := strings.Index(stdout, "Post-deploy (needed setup first)")
+	if deployPos > postDeployPos {
+		t.Errorf("deploy should run before post-deploy: deploy=%d, post-deploy=%d", deployPos, postDeployPos)
+	}
+	if setupPos > postDeployPos {
+		t.Errorf("setup should run before post-deploy: setup=%d, post-deploy=%d", setupPos, postDeployPos)
+	}
+}
+
+func TestRun_MultipleAfterHooksOnSameTarget(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "after-hooks")
+
+	// Running "test" should pull in both coverage-report and notify
+	stdout, stderr, err := runNixTasks(t, binary, "run", "test", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	}
+
+	for _, task := range []string{"test", "coverage-report", "notify"} {
+		if !strings.Contains(stdout, task) {
+			t.Errorf("expected '%s' in output, got: %s", task, stdout)
+		}
+	}
+	if !strings.Contains(stdout, "3 tasks") {
+		t.Errorf("expected '3 tasks' in summary, got: %s", stdout)
+	}
+}
+
+func TestDescribe_AfterHook(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "after-hooks")
+
+	// Describe the hook task - should show "Runs after"
+	stdout, stderr, err := runNixTasks(t, binary, "describe", "post-build", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("nix-tasks describe failed: %v\nstderr: %s", err, stderr)
+	}
+
+	if !strings.Contains(stdout, "Runs after:") {
+		t.Errorf("expected 'Runs after:' in describe output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "build") {
+		t.Errorf("expected 'build' as after-hook target in describe output, got: %s", stdout)
+	}
+}
+
+func TestDescribe_AfterHookTarget(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "after-hooks")
+
+	// Describe the target task - should show "After-hooked by"
+	stdout, stderr, err := runNixTasks(t, binary, "describe", "build", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("nix-tasks describe failed: %v\nstderr: %s", err, stderr)
+	}
+
+	if !strings.Contains(stdout, "After-hooked by:") {
+		t.Errorf("expected 'After-hooked by:' in describe output, got: %s", stdout)
+	}
+	if !strings.Contains(stdout, "post-build") {
+		t.Errorf("expected 'post-build' as hooker in describe output, got: %s", stdout)
 	}
 }

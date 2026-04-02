@@ -407,6 +407,23 @@ tasks.deploy = lib.mkTask {
 };
 ```
 
+#### Post-task hooks (after)
+
+Use `after` to run a task automatically whenever another task runs. This is the inverse of `depends` — instead of "I need X before me", it means "whenever X runs, also run me after it."
+
+This is especially useful when extending tasks from a shared flake, since you can hook onto an existing task without modifying its definition:
+
+```nix
+# In your repo's flake.nix, extending a shared "build" task:
+tasks.post-build-hook = lib.mkTask {
+  description = "Generate manifests after build";
+  after = [ "task:build" ];  # Runs automatically whenever "build" runs
+  commands = [ "generate-manifests" ];
+};
+```
+
+When you run `nix-tasks run build`, both `build` and `post-build-hook` will execute, in that order. After-hooks chain transitively — if another task hooks onto `post-build-hook`, it will also be included.
+
 #### Task with inputs/outputs (for caching)
 
 ```nix
@@ -502,6 +519,7 @@ tasks.build = lib.pipe standards.tasks.build [
 | Modifier | Description |
 |----------|-------------|
 | `prependTaskDeps` / `appendTaskDeps` / `overrideTaskDeps` | Modify task dependencies |
+| `prependAfterHooks` / `appendAfterHooks` / `overrideAfterHooks` | Modify after-hook targets |
 | `prependDeps` / `appendDeps` / `overrideDeps` | Modify package dependencies |
 | `prependCommands` / `appendCommands` / `overrideCommands` | Modify shell commands |
 | `mergeEnv` / `overrideEnv` | Modify environment variables |

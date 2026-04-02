@@ -9,32 +9,48 @@ import (
 
 // TaskGraph represents the task dependency DAG
 type TaskGraph struct {
-	tasks   map[string]config.Task
-	edges   map[string][]string // task -> tasks it depends on
-	reverse map[string][]string // task -> tasks that depend on it
+	tasks      map[string]config.Task
+	edges      map[string][]string // task -> tasks it depends on
+	reverse    map[string][]string // task -> tasks that depend on it
+	afterHooks map[string][]string // target task -> tasks that run after it via "after"
 }
 
 // NewTaskGraph builds a dependency graph from configuration
 func NewTaskGraph(tasks map[string]config.Task) (*TaskGraph, error) {
 	g := &TaskGraph{
-		tasks:   tasks,
-		edges:   make(map[string][]string),
-		reverse: make(map[string][]string),
+		tasks:      tasks,
+		edges:      make(map[string][]string),
+		reverse:    make(map[string][]string),
+		afterHooks: make(map[string][]string),
 	}
 
 	// Initialize edges for all tasks
 	for name := range tasks {
 		g.edges[name] = []string{}
 		g.reverse[name] = []string{}
+		g.afterHooks[name] = []string{}
 	}
 
-	// Build edges
+	// Build edges from depends
 	for name, task := range tasks {
 		for _, dep := range task.Depends {
 			depName := strings.TrimPrefix(dep, config.TaskDependencyPrefix)
 			if _, ok := tasks[depName]; !ok {
 				return nil, fmt.Errorf("task '%s' depends on unknown task '%s'", name, depName)
 			}
+			g.edges[name] = append(g.edges[name], depName)
+			g.reverse[depName] = append(g.reverse[depName], name)
+		}
+	}
+
+	// Build edges from after (hook task depends on its target)
+	for name, task := range tasks {
+		for _, dep := range task.After {
+			depName := strings.TrimPrefix(dep, config.TaskDependencyPrefix)
+			if _, ok := tasks[depName]; !ok {
+				return nil, fmt.Errorf("task '%s' has after-hook on unknown task '%s'", name, depName)
+			}
+			g.afterHooks[depName] = append(g.afterHooks[depName], name)
 			g.edges[name] = append(g.edges[name], depName)
 			g.reverse[depName] = append(g.reverse[depName], name)
 		}
@@ -85,36 +101,66 @@ func (g *TaskGraph) findCycle() []string {
 	return nil
 }
 
-// ExecutionOrder returns tasks in topological order for execution
-// The target task and all its dependencies will be included
+// ExecutionOrder returns tasks in topological order for execution.
+// The target task, all its dependencies, and any after-hooks (transitively)
+// will be included.
 func (g *TaskGraph) ExecutionOrder(target string) ([]string, error) {
 	if _, ok := g.tasks[target]; !ok {
 		return nil, fmt.Errorf("task not found: %s", target)
 	}
 
+	// Phase 1: Collect execution set (deps + after-hooks, transitively)
+	inSet := make(map[string]bool)
+
+	var collectDeps func(name string)
+	collectDeps = func(name string) {
+		if inSet[name] {
+			return
+		}
+		inSet[name] = true
+		for _, dep := range g.edges[name] {
+			collectDeps(dep)
+		}
+	}
+
+	// Start with target and its transitive dependencies
+	collectDeps(target)
+
+	// Expand with after-hooks until stable
+	changed := true
+	for changed {
+		changed = false
+		for task := range inSet {
+			for _, hook := range g.afterHooks[task] {
+				if !inSet[hook] {
+					collectDeps(hook)
+					changed = true
+				}
+			}
+		}
+	}
+
+	// Phase 2: Topological sort over the execution set
 	visited := make(map[string]bool)
 	var order []string
 
-	var visit func(name string) error
-	visit = func(name string) error {
-		if visited[name] {
-			return nil
+	var visit func(name string)
+	visit = func(name string) {
+		if visited[name] || !inSet[name] {
+			return
 		}
 		visited[name] = true
-
-		// Visit dependencies first
 		for _, dep := range g.edges[name] {
-			if err := visit(dep); err != nil {
-				return err
-			}
+			visit(dep)
 		}
-
 		order = append(order, name)
-		return nil
 	}
 
-	if err := visit(target); err != nil {
-		return nil, err
+	// Visit from target first, then any remaining tasks in the set
+	// (after-hooks may not be reachable from target via edges alone)
+	visit(target)
+	for task := range inSet {
+		visit(task)
 	}
 
 	return order, nil
@@ -179,6 +225,11 @@ func (g *TaskGraph) Dependencies(name string) []string {
 // Dependents returns tasks that directly depend on the given task
 func (g *TaskGraph) Dependents(name string) []string {
 	return g.reverse[name]
+}
+
+// AfterHooks returns tasks that run after the given task via the "after" field
+func (g *TaskGraph) AfterHooks(name string) []string {
+	return g.afterHooks[name]
 }
 
 // Tasks returns all task names in the graph

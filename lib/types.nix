@@ -6,6 +6,7 @@
     description ? "",
     deps ? [],
     depends ? [],
+    after ? [],
     # Shell task fields
     commands ? [],
     script ? null,
@@ -19,7 +20,7 @@
     drvPath ? null,
     derivationName ? null,
   }: {
-    inherit type description deps depends commands script env workingDir inputs outputs continueOnError;
+    inherit type description deps depends after commands script env workingDir inputs outputs continueOnError;
     inherit derivation drvPath derivationName;
   };
 

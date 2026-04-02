@@ -33,6 +33,14 @@ func Validate(cfg *Config) error {
 				errs = append(errs, fmt.Sprintf("task '%s': unknown task dependency '%s'", taskName, dep))
 			}
 		}
+
+		// Check after-hook targets reference valid tasks
+		for _, dep := range task.After {
+			depName := strings.TrimPrefix(dep, TaskDependencyPrefix)
+			if _, ok := cfg.Tasks[depName]; !ok {
+				errs = append(errs, fmt.Sprintf("task '%s': unknown after-hook target '%s'", taskName, dep))
+			}
+		}
 	}
 
 	// Check shell packages reference valid packages

@@ -26,6 +26,7 @@ type Task struct {
 	Description string   `json:"description"`
 	Deps        []string `json:"deps"`
 	Depends     []string `json:"depends"`
+	After       []string `json:"after,omitempty"`
 
 	// Shell task fields
 	Commands   []string          `json:"commands,omitempty"`
