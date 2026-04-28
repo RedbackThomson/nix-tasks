@@ -794,6 +794,27 @@ func TestRun_ForceBypassesCache(t *testing.T) {
 	}
 }
 
+func TestRun_ShellTaskWithoutInputsNotCached(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "simple")
+
+	// "goodbye" is a shell task that intentionally has no `inputs` declared.
+	// Under the inputs-opt-in policy, it should never be reported as cached,
+	// even on repeated runs.
+	cacheDir := t.TempDir()
+
+	for i := 0; i < 2; i++ {
+		stdout, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "goodbye", "-f", flakePath)
+		if err != nil {
+			t.Fatalf("run %d failed: %v\nstderr: %s", i+1, err, stderr)
+		}
+		if strings.Contains(stdout, "(cached)") {
+			t.Errorf("shell task without inputs should never be cached (run %d), got: %s", i+1, stdout)
+		}
+	}
+}
+
 func TestRun_NoCacheDisablesCaching(t *testing.T) {
 	skipIfNoNix(t)
 	binary := nixTasksBinary(t)

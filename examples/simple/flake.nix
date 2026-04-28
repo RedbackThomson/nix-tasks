@@ -37,7 +37,6 @@
             test = lib.mkTask {
               description = "Run tests";
               deps = [ "go" ];
-              noCache = true;  # Always run tests, never cache results
               commands = [
                 "echo 'Running tests...'"
                 "echo 'All tests passed'"

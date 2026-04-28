@@ -60,11 +60,18 @@ func TestDir(t *testing.T) {
 }
 
 func TestComputeFingerprint(t *testing.T) {
+	// Most cases need a non-empty Inputs list because shell tasks without
+	// declared inputs are intentionally not cached.
+	withInputs := func(t config.Task) config.Task {
+		t.Inputs = []string{"**/*.go"}
+		return t
+	}
+
 	t.Run("same task produces same fingerprint", func(t *testing.T) {
-		task := config.Task{
+		task := withInputs(config.Task{
 			Deps:     []string{"go"},
 			Commands: []string{"go build ./..."},
-		}
+		})
 		packages := map[string]string{
 			"go": "/nix/store/abc123-go",
 		}
@@ -85,14 +92,14 @@ func TestComputeFingerprint(t *testing.T) {
 	})
 
 	t.Run("different commands produce different fingerprint", func(t *testing.T) {
-		task1 := config.Task{
+		task1 := withInputs(config.Task{
 			Deps:     []string{"go"},
 			Commands: []string{"go build ./..."},
-		}
-		task2 := config.Task{
+		})
+		task2 := withInputs(config.Task{
 			Deps:     []string{"go"},
 			Commands: []string{"go test ./..."},
-		}
+		})
 		packages := map[string]string{
 			"go": "/nix/store/abc123-go",
 		}
@@ -106,10 +113,10 @@ func TestComputeFingerprint(t *testing.T) {
 	})
 
 	t.Run("different packages produce different fingerprint", func(t *testing.T) {
-		task := config.Task{
+		task := withInputs(config.Task{
 			Deps:     []string{"go"},
 			Commands: []string{"go build ./..."},
-		}
+		})
 		packages1 := map[string]string{
 			"go": "/nix/store/abc123-go-1.21",
 		}
@@ -126,16 +133,16 @@ func TestComputeFingerprint(t *testing.T) {
 	})
 
 	t.Run("description does not affect fingerprint", func(t *testing.T) {
-		task1 := config.Task{
+		task1 := withInputs(config.Task{
 			Description: "Build the project",
 			Deps:        []string{"go"},
 			Commands:    []string{"go build ./..."},
-		}
-		task2 := config.Task{
+		})
+		task2 := withInputs(config.Task{
 			Description: "Different description",
 			Deps:        []string{"go"},
 			Commands:    []string{"go build ./..."},
-		}
+		})
 		packages := map[string]string{
 			"go": "/nix/store/abc123-go",
 		}
@@ -149,16 +156,16 @@ func TestComputeFingerprint(t *testing.T) {
 	})
 
 	t.Run("env vars affect fingerprint", func(t *testing.T) {
-		task1 := config.Task{
+		task1 := withInputs(config.Task{
 			Deps:     []string{"go"},
 			Commands: []string{"go build ./..."},
 			Env:      map[string]string{"CGO_ENABLED": "0"},
-		}
-		task2 := config.Task{
+		})
+		task2 := withInputs(config.Task{
 			Deps:     []string{"go"},
 			Commands: []string{"go build ./..."},
 			Env:      map[string]string{"CGO_ENABLED": "1"},
-		}
+		})
 		packages := map[string]string{
 			"go": "/nix/store/abc123-go",
 		}
@@ -168,6 +175,101 @@ func TestComputeFingerprint(t *testing.T) {
 
 		if fp1.Hash == fp2.Hash {
 			t.Error("Fingerprints should differ for different env vars")
+		}
+	})
+
+	t.Run("shell task without inputs is not cached", func(t *testing.T) {
+		task := config.Task{
+			Type:     config.TaskTypeShell,
+			Deps:     []string{"go"},
+			Commands: []string{"go build ./..."},
+		}
+		packages := map[string]string{
+			"go": "/nix/store/abc123-go",
+		}
+
+		fp, err := ComputeFingerprint(task, packages, "")
+		if err != nil {
+			t.Fatalf("ComputeFingerprint() error = %v", err)
+		}
+		if fp != nil {
+			t.Errorf("expected nil fingerprint for shell task without inputs, got %s", fp.Hash)
+		}
+	})
+
+	t.Run("untyped task without inputs is not cached", func(t *testing.T) {
+		// Tasks without an explicit Type are treated as shell-shaped.
+		task := config.Task{
+			Deps:     []string{"go"},
+			Commands: []string{"go build ./..."},
+		}
+		packages := map[string]string{
+			"go": "/nix/store/abc123-go",
+		}
+
+		fp, _ := ComputeFingerprint(task, packages, "")
+		if fp != nil {
+			t.Errorf("expected nil fingerprint for untyped task without inputs, got %s", fp.Hash)
+		}
+	})
+
+	t.Run("build task without inputs is still cached", func(t *testing.T) {
+		task := config.Task{
+			Type:    config.TaskTypeBuild,
+			DrvPath: "/nix/store/abc123.drv",
+		}
+
+		fp, err := ComputeFingerprint(task, nil, "")
+		if err != nil {
+			t.Fatalf("ComputeFingerprint() error = %v", err)
+		}
+		if fp == nil {
+			t.Error("expected non-nil fingerprint for build task")
+		}
+	})
+
+	t.Run("noCache wins over declared inputs", func(t *testing.T) {
+		task := config.Task{
+			Type:     config.TaskTypeShell,
+			Commands: []string{"go test ./..."},
+			Inputs:   []string{"**/*.go"},
+			NoCache:  true,
+		}
+
+		fp, _ := ComputeFingerprint(task, nil, "")
+		if fp != nil {
+			t.Errorf("expected nil fingerprint when NoCache=true, got %s", fp.Hash)
+		}
+	})
+
+	t.Run("input file content affects fingerprint", func(t *testing.T) {
+		dir := t.TempDir()
+		file := filepath.Join(dir, "main.go")
+
+		task := config.Task{
+			Type:     config.TaskTypeShell,
+			Commands: []string{"go build"},
+			Inputs:   []string{"main.go"},
+		}
+
+		if err := os.WriteFile(file, []byte("package main\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		fp1, err := ComputeFingerprint(task, nil, dir)
+		if err != nil {
+			t.Fatalf("ComputeFingerprint() error = %v", err)
+		}
+
+		if err := os.WriteFile(file, []byte("package main\n\nfunc main() {}\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		fp2, err := ComputeFingerprint(task, nil, dir)
+		if err != nil {
+			t.Fatalf("ComputeFingerprint() error = %v", err)
+		}
+
+		if fp1.Hash == fp2.Hash {
+			t.Error("expected fingerprint to change when input file content changes")
 		}
 	})
 }

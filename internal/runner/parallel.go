@@ -211,6 +211,9 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 			slog.Debug("failed to compute fingerprint", "task", name, "error", fpErr)
 			// Continue without caching
 		}
+		if fp == nil && !task.NoCache && task.Type != config.TaskTypeBuild && len(task.Inputs) == 0 {
+			slog.Debug("skipping cache: shell task has no declared inputs", "task", name)
+		}
 	}
 
 	// Check cache if not forcing rebuild

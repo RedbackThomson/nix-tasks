@@ -42,7 +42,6 @@
             # Run Go tests
             test = lib.mkTask {
               description = "Run Go tests";
-              noCache = true;
               deps = [ "go" ];
               commands = [
                 "go test -v ./..."
@@ -52,7 +51,6 @@
             # Run linter
             lint = lib.mkTask {
               description = "Run golangci-lint";
-              noCache = true;
               deps = [ "golangci-lint" ];
               commands = [
                 "golangci-lint run ./..."
@@ -62,7 +60,6 @@
             # Format code
             fmt = lib.mkTask {
               description = "Format Go code";
-              noCache = true;
               deps = [ "go" ];
               commands = [
                 "go fmt ./..."
@@ -72,7 +69,6 @@
             # Tidy dependencies
             tidy = lib.mkTask {
               description = "Tidy Go dependencies";
-              noCache = true;
               deps = [ "go" ];
               commands = [
                 "go mod tidy"

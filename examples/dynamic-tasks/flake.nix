@@ -61,7 +61,6 @@
             value = lib.mkTask {
               description = "Deploy ${svc.name} to Kubernetes";
               depends = [ "task:build-${svc.name}" ];
-              noCache = true;
               commands = [
                 "echo 'Deploying ${svc.name}...'"
                 "echo 'Applying k8s manifest for ${svc.name} (port ${toString svc.port})'"
@@ -88,7 +87,6 @@
               depends =
                 if services == [] then []
                 else map (svc: "task:deploy-${svc.name}") services;
-              noCache = true;
               commands =
                 if services == [] then [ "echo 'No services configured.'" ]
                 else [ "echo 'All ${toString (builtins.length services)} services deployed.'" ];

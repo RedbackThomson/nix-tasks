@@ -102,6 +102,12 @@ outputs = { company-tasks, ... }: {
 - Binary cache (Cachix, S3) for team sharing
 - Force rebuild flag to bypass cache for debugging
 
+**Inputs are opt-in for shell tasks.** A shell task is only cached when it
+declares `inputs`; without an explicit input set the fingerprint cannot detect
+source-file changes (e.g. switching git branches), so caching such a task
+would produce stale hits. Build tasks (`type = "build"`) are always cached —
+their identity comes from the Nix derivation itself.
+
 ### 10. Environment Management
 **Composition/Inheritance**
 - Define base environments and compose them
