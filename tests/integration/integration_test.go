@@ -5,6 +5,8 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -13,10 +15,33 @@ import (
 	"time"
 )
 
+var builtBinary string
+
+func TestMain(m *testing.M) {
+	os.Exit(runTests(m))
+}
+
+func runTests(m *testing.M) int {
+	dir, err := os.MkdirTemp("", "nix-tasks-integration-")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
+		return 1
+	}
+	defer os.RemoveAll(dir)
+
+	builtBinary = filepath.Join(dir, "nix-tasks")
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", builtBinary, "../../cmd/nix-tasks")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to build nix-tasks: %v\n%s", err, output)
+		return 1
+	}
+
+	return m.Run()
+}
+
 // testdataDir returns the path to the testdata directory
 func testdataDir(t *testing.T) string {
 	t.Helper()
-	// Get the directory of this test file using runtime.Caller
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("failed to get test file path")
@@ -24,24 +49,13 @@ func testdataDir(t *testing.T) string {
 	return filepath.Join(filepath.Dir(filename), "testdata")
 }
 
-// nixTasksBinary builds and returns the path to the nix-tasks binary
+// nixTasksBinary returns the nix-tasks binary built once by TestMain.
 func nixTasksBinary(t *testing.T) string {
 	t.Helper()
-
-	// Build the binary
-	tmpDir := t.TempDir()
-	binary := filepath.Join(tmpDir, "nix-tasks")
-
-	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", binary, "../../cmd/nix-tasks")
-	if output, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("failed to build nix-tasks: %v\n%s", err, output)
-	}
-
-	return binary
+	return builtBinary
 }
 
-// runNixTasks runs nix-tasks with the given arguments and returns stdout, stderr, and error
-// Each call gets a fresh cache directory to avoid test interference
+// runNixTasks runs nix-tasks with a fresh cache and working directory.
 func runNixTasks(t *testing.T, binary string, args ...string) (string, string, error) {
 	t.Helper()
 	return runNixTasksWithCacheDir(t, binary, t.TempDir(), args...)
@@ -50,11 +64,19 @@ func runNixTasks(t *testing.T, binary string, args ...string) (string, string, e
 // runNixTasksWithCacheDir runs nix-tasks with a specific cache directory
 func runNixTasksWithCacheDir(t *testing.T, binary, cacheDir string, args ...string) (string, string, error) {
 	t.Helper()
+	return runNixTasksInDir(t, binary, t.TempDir(), cacheDir, args...)
+}
+
+// runNixTasksInDir runs nix-tasks from workDir, which is also where tasks
+// run and write files, so tests can inspect what the tasks did.
+func runNixTasksInDir(t *testing.T, binary, workDir, cacheDir string, args ...string) (string, string, error) {
+	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, binary, args...)
+	cmd.Dir = workDir
 	cmd.Env = append(cmd.Environ(), "NIX_TASKS_CACHE_DIR="+cacheDir)
 
 	var stdout, stderr bytes.Buffer
