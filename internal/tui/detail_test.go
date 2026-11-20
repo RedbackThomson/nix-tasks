@@ -52,6 +52,20 @@ func TestTaskDetail(t *testing.T) {
 	}
 }
 
+func TestTaskDetailCache(t *testing.T) {
+	task := config.Task{Commands: []string{"go generate ./..."}, Cache: &config.TaskCache{
+		Inputs: []string{"apis/**/*.go", "go.mod"}, Outputs: []string{}, Env: []string{"GOFLAGS"},
+	}}
+	got := plain(taskDetail("generate", task, 60))
+	want := "Cache\n  inputs:  apis/**/*.go, go.mod\n  outputs: none\n  env:     GOFLAGS"
+	if !strings.Contains(got, want) {
+		t.Errorf("expected %q in:\n%s", want, got)
+	}
+	if got := plain(taskDetail("x", config.Task{Commands: []string{"x"}}, 60)); strings.Contains(got, "Cache") {
+		t.Errorf("uncached task shows a cache section:\n%s", got)
+	}
+}
+
 func TestTaskDetailWrapsLongValues(t *testing.T) {
 	var deps []string
 	for i := range 20 {
