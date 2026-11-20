@@ -24,16 +24,18 @@ type TaskResult struct {
 
 // ParallelExecutor runs tasks with parallelism
 type ParallelExecutor struct {
-	executor *Executor // Delegate to executor for task execution
-	cache    *cache.Store
-	maxJobs  int
-	strategy FailureStrategy
+	executor        *Executor // Delegate to executor for task execution
+	cache           *cache.Store
+	maxJobs         int
+	continueOnError bool
 }
 
 // ParallelExecutorOptions configures the parallel executor
 type ParallelExecutorOptions struct {
-	MaxJobs  int
-	Strategy FailureStrategy
+	MaxJobs int
+	// ContinueOnError keeps running independent tasks after a failure
+	// instead of cancelling the rest of the run.
+	ContinueOnError bool
 }
 
 // NewParallelExecutor creates a parallel executor
@@ -59,10 +61,10 @@ func NewParallelExecutor(
 	executor := NewExecutor(eval, cfg, execOpts)
 
 	return &ParallelExecutor{
-		executor: executor,
-		cache:    cacheStore,
-		maxJobs:  maxJobs,
-		strategy: parallelOpts.Strategy,
+		executor:        executor,
+		cache:           cacheStore,
+		maxJobs:         maxJobs,
+		continueOnError: parallelOpts.ContinueOnError,
 	}
 }
 
@@ -75,13 +77,12 @@ func (p *ParallelExecutor) ExecuteDAG(ctx context.Context, graph *TaskGraph, tar
 
 	var results []TaskResult
 	var failed bool
-	var cancelOnce sync.Once
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	for _, group := range groups {
 		// Check if we should stop due to prior failure
-		if failed && p.strategy == FailFast {
+		if failed && !p.continueOnError {
 			results = append(results, p.skipTasks(group, context.Canceled)...)
 			continue
 		}
@@ -99,9 +100,8 @@ func (p *ParallelExecutor) ExecuteDAG(ctx context.Context, graph *TaskGraph, tar
 		for _, r := range groupResults {
 			if !r.Success {
 				failed = true
-				if p.strategy == FailFast {
-					// Cancel context for any in-flight tasks
-					cancelOnce.Do(cancel)
+				if !p.continueOnError {
+					cancel()
 					break
 				}
 			}
