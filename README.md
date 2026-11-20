@@ -390,6 +390,10 @@ $ nix-tasks completions fish > ~/.config/fish/completions/nix-tasks.fish
 
 ### Defining Tasks
 
+Task and dev shell names can contain any character except `"`, which `nix`
+cannot select in a flake attribute path; `nix-tasks` reports such names as
+configuration errors.
+
 #### Basic task
 
 ```nix
