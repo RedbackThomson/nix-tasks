@@ -354,6 +354,9 @@ $ nix-tasks run generate --force
 # Disable the task cache entirely
 $ nix-tasks run generate --no-cache
 
+# Explain each cached task's hit or miss after the run
+$ nix-tasks run generate --explain
+
 # Stream output in real-time (default in CI; same as -v and --output=stream)
 $ nix-tasks run build --stream
 ```
@@ -697,6 +700,14 @@ not. After-hooks of a task still run when it is answered from the cache.
 With `--raw`, a target answered from the cache prints `<task>: cached` on
 stderr instead of its output.
 
+`run --explain` prints, after the summary, what the cache did for each cached
+task in the run: a hit and the time it saved, or a miss and which of the
+definition, toolchain, `cache.env` variables, input files (up to 20 listed)
+or upstream tasks changed (`tool (derivation)` for a build task whose
+derivation changed) since the task's most recently used entry, or that its
+outputs no longer match. `--debug` logs the same one-line reason on every
+miss.
+
 ```bash
 $ nix-tasks run generate
 ✓ generate (41.2s)
@@ -707,6 +718,14 @@ $ nix-tasks run generate
 generate ✓ (cached, 41s saved)
 
 Completed: 1 tasks (1 cached (41s saved))
+
+$ nix-tasks run package --explain # why each cached task hit or missed
+...
+generate: miss
+  inputs changed: 1 modified
+    M apis/v1/types.go
+package: miss
+  upstream changed: generate
 
 $ nix-tasks cache stats           # entries, size, last hit and last run per task
 $ nix-tasks cache clean --task generate

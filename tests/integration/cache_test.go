@@ -343,8 +343,9 @@ func TestCache_BuildUpstreamKeyedByDerivation(t *testing.T) {
 		t.Errorf("unchanged derivation should hit:\n%s", out)
 	}
 	f.write("tool.txt", "v2\n")
-	if out := f.mustRun("use-tool"); hit(out, "use-tool") {
-		t.Errorf("changed derivation should miss:\n%s", out)
+	out := f.mustRun("use-tool", "--explain")
+	if hit(out, "use-tool") || !strings.Contains(out, "use-tool: miss\n  upstream changed: tool (derivation)\n") {
+		t.Errorf("changed derivation should miss and say so:\n%s", out)
 	}
 	f.assertRuns("use-tool", 2)
 }
@@ -360,6 +361,24 @@ func TestCache_ReportsHitsAndSavedTime(t *testing.T) {
 	stdout, stderr, err := f.run("run", "generate", "--raw")
 	if err != nil || stdout != "" || !strings.Contains(stderr, "generate: cached") {
 		t.Errorf("--raw hit: %v\nstdout: %q\nstderr: %q", err, stdout, stderr)
+	}
+}
+
+func TestCache_ExplainNamesEditedInput(t *testing.T) {
+	f := newCacheFlake(t)
+	f.mustRun("package")
+	f.write("src/b.txt", "B\n")
+	out := f.mustRun("package", "--explain")
+	for _, want := range []string{
+		"generate: miss\n  inputs changed: 1 added\n    A src/b.txt\n",
+		"package: miss\n  inputs changed: 1 modified\n    M gen/out.txt\n  upstream changed: generate\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("--explain missing %q:\n%s", want, out)
+		}
+	}
+	if out := f.mustRun("generate", "--explain"); !strings.Contains(out, "generate: hit (saved ") {
+		t.Errorf("--explain should report the hit:\n%s", out)
 	}
 }
 

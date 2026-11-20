@@ -32,6 +32,7 @@ type RunCmd struct {
 	Force           bool     `help:"Run cached tasks without looking them up, refreshing their cache entries"`
 	NoCache         bool     `help:"Disable the task cache: nothing is hashed, looked up or stored"`
 	Raw             bool     `help:"Pipe task output directly to stdout/stderr with no decoration"`
+	Explain         bool     `help:"After the run, explain each cached task's hit or miss"`
 }
 
 // Validate is called by kong after parsing.
@@ -150,6 +151,9 @@ func (c *RunCmd) run(globals *Globals, reporter ui.Reporter, warnings *warnings)
 		return err
 	}
 	reporter.Summary(graph, c.Tasks, results)
+	if c.Explain {
+		c.explain(globals, cfg, results)
+	}
 
 	code := runExitCode(results)
 	switch {
@@ -191,6 +195,21 @@ func (c *RunCmd) openCache(ctx context.Context, globals *Globals, cfg *config.Co
 		return ok
 	})
 	return store, nil
+}
+
+func (c *RunCmd) explain(globals *Globals, cfg *config.Config, results []runner.TaskResult) {
+	out := os.Stdout
+	if c.Raw {
+		out = os.Stderr
+	}
+	disabled := ""
+	switch {
+	case c.NoCache:
+		disabled = "--no-cache"
+	case globals.FlakeRoot == "":
+		disabled = "the flake is not a local path"
+	}
+	writeExplain(out, cfg, results, disabled)
 }
 
 func warn(format string, args ...any) {
