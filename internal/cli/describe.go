@@ -52,8 +52,7 @@ func (c *DescribeCmd) Run(globals *Globals) error {
 	if len(task.Depends) > 0 {
 		fmt.Printf("%s\n", ui.Label("Depends on:"))
 		for _, dep := range task.Depends {
-			depName := strings.TrimPrefix(dep, "task:")
-			fmt.Printf("  %s %s\n", ui.Muted("-"), depName)
+			fmt.Printf("  %s %s\n", ui.Muted("-"), dep)
 		}
 		fmt.Println()
 	}
@@ -61,8 +60,7 @@ func (c *DescribeCmd) Run(globals *Globals) error {
 	if len(task.After) > 0 {
 		fmt.Printf("%s\n", ui.Label("Runs after:"))
 		for _, dep := range task.After {
-			depName := strings.TrimPrefix(dep, "task:")
-			fmt.Printf("  %s %s\n", ui.Muted("-"), depName)
+			fmt.Printf("  %s %s\n", ui.Muted("-"), dep)
 		}
 		fmt.Println()
 	}
@@ -119,11 +117,10 @@ func (c *DescribeCmd) Run(globals *Globals) error {
 
 func findAfterHookers(taskName string, tasks map[string]config.Task) []string {
 	var hookers []string
-	target := "task:" + taskName
 
 	for name, task := range tasks {
 		for _, dep := range task.After {
-			if dep == target || dep == taskName {
+			if dep == taskName {
 				hookers = append(hookers, name)
 				break
 			}
@@ -136,11 +133,10 @@ func findAfterHookers(taskName string, tasks map[string]config.Task) []string {
 
 func findDependents(taskName string, tasks map[string]config.Task) []string {
 	var dependents []string
-	target := "task:" + taskName
 
 	for name, task := range tasks {
 		for _, dep := range task.Depends {
-			if dep == target || dep == taskName {
+			if dep == taskName {
 				dependents = append(dependents, name)
 				break
 			}

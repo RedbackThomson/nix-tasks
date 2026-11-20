@@ -32,8 +32,7 @@ func NewTaskGraph(tasks map[string]config.Task) (*TaskGraph, error) {
 
 	// Build edges from depends
 	for name, task := range tasks {
-		for _, dep := range task.Depends {
-			depName := strings.TrimPrefix(dep, config.TaskDependencyPrefix)
+		for _, depName := range task.Depends {
 			if _, ok := tasks[depName]; !ok {
 				return nil, fmt.Errorf("task '%s' depends on unknown task '%s'", name, depName)
 			}
@@ -43,8 +42,7 @@ func NewTaskGraph(tasks map[string]config.Task) (*TaskGraph, error) {
 
 	// Build edges from after (hook task depends on its target)
 	for name, task := range tasks {
-		for _, dep := range task.After {
-			depName := strings.TrimPrefix(dep, config.TaskDependencyPrefix)
+		for _, depName := range task.After {
 			if _, ok := tasks[depName]; !ok {
 				return nil, fmt.Errorf("task '%s' has after-hook on unknown task '%s'", name, depName)
 			}

@@ -64,7 +64,7 @@ func (f *fakeNix) BuildCmd(ctx context.Context, _ string) *exec.Cmd {
 func sh(script string, depends ...string) config.Task {
 	var deps []string
 	for _, d := range depends {
-		deps = append(deps, config.TaskDependencyPrefix+d)
+		deps = append(deps, d)
 	}
 	return config.Task{Script: script, Depends: deps}
 }
@@ -340,7 +340,7 @@ func TestRun_FailFastStopsUnstartedTasks(t *testing.T) {
 
 func TestRun_AfterHooks(t *testing.T) {
 	hook := logged("hook")
-	hook.After = []string{config.TaskDependencyPrefix + "build"}
+	hook.After = []string{"build"}
 
 	t.Run("hook runs after its target", func(t *testing.T) {
 		h := newHarness(t)

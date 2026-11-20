@@ -22,7 +22,7 @@ func TestRun_TaskShellEnvironment(t *testing.T) {
 			Script: `echo "override $FAKE_SHELL" >> ran.log`,
 			Env:    map[string]string{"FAKE_SHELL": "from-task-env"},
 		},
-		"all": {Depends: []string{"task:plain", "task:go", "task:override"}},
+		"all": {Depends: []string{"plain", "go", "override"}},
 	}
 	h.opts.Jobs = 1
 	assertStates(t, h.run(context.Background(), tasks, "all"), map[string]runner.TaskState{
@@ -46,7 +46,7 @@ func TestRun_TaskShellsRealisedOncePerDrv(t *testing.T) {
 		"a":   logged("a"),
 		"b":   logged("b"),
 		"c":   logged("c"),
-		"all": {Depends: []string{"task:a", "task:b", "task:c"}},
+		"all": {Depends: []string{"a", "b", "c"}},
 	}
 
 	h.run(context.Background(), tasks, "all")
@@ -93,7 +93,7 @@ func TestRun_TasksWithoutScriptSkipTheShell(t *testing.T) {
 	h := newHarness(t)
 	tasks := map[string]config.Task{
 		"a":     logged("a"),
-		"group": {Depends: []string{"task:a"}},
+		"group": {Depends: []string{"a"}},
 		"empty": {Commands: []string{}},
 	}
 	assertStates(t, h.run(context.Background(), tasks, "group"), map[string]runner.TaskState{
@@ -118,7 +118,7 @@ func TestRun_BrokenShellFailsOnlyItsTask(t *testing.T) {
 	tasks := map[string]config.Task{
 		"good": logged("good"),
 		"bad":  logged("bad"),
-		"all":  {Depends: []string{"task:good", "task:bad"}},
+		"all":  {Depends: []string{"good", "bad"}},
 	}
 	h.opts.ContinueOnError = true
 	results := h.run(context.Background(), tasks, "all")

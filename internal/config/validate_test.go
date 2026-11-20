@@ -40,7 +40,7 @@ func TestValidate(t *testing.T) {
 			config: &config.Config{
 				Packages: []string{"go"},
 				Tasks: map[string]config.Task{
-					"deploy": {Depends: []string{"task:build"}},
+					"deploy": {Depends: []string{"build"}},
 				},
 				DevShells: map[string]config.Shell{},
 			},
@@ -52,7 +52,7 @@ func TestValidate(t *testing.T) {
 				Packages: []string{"go"},
 				Tasks: map[string]config.Task{
 					"build":  {Deps: []string{"go"}},
-					"deploy": {Depends: []string{"task:build"}},
+					"deploy": {Depends: []string{"build"}},
 				},
 				DevShells: map[string]config.Shell{},
 			},
@@ -97,7 +97,7 @@ func TestValidate(t *testing.T) {
 			config: &config.Config{
 				Packages: []string{},
 				Tasks: map[string]config.Task{
-					"hook": {After: []string{"task:build"}},
+					"hook": {After: []string{"build"}},
 				},
 				DevShells: map[string]config.Shell{},
 			},
@@ -109,7 +109,7 @@ func TestValidate(t *testing.T) {
 				Packages: []string{},
 				Tasks: map[string]config.Task{
 					"build": {},
-					"hook":  {After: []string{"task:build"}},
+					"hook":  {After: []string{"build"}},
 				},
 				DevShells: map[string]config.Shell{},
 			},

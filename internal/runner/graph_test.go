@@ -31,7 +31,7 @@ func TestNewTaskGraph(t *testing.T) {
 			name: "simple dependency",
 			tasks: map[string]config.Task{
 				"build": {Description: "Build"},
-				"test":  {Description: "Test", Depends: []string{"task:build"}},
+				"test":  {Description: "Test", Depends: []string{"build"}},
 			},
 			wantErr: false,
 		},
@@ -46,7 +46,7 @@ func TestNewTaskGraph(t *testing.T) {
 		{
 			name: "unknown dependency",
 			tasks: map[string]config.Task{
-				"test": {Description: "Test", Depends: []string{"task:build"}},
+				"test": {Description: "Test", Depends: []string{"build"}},
 			},
 			wantErr: true,
 			errMsg:  "unknown task",
@@ -54,8 +54,8 @@ func TestNewTaskGraph(t *testing.T) {
 		{
 			name: "simple cycle",
 			tasks: map[string]config.Task{
-				"a": {Depends: []string{"task:b"}},
-				"b": {Depends: []string{"task:a"}},
+				"a": {Depends: []string{"b"}},
+				"b": {Depends: []string{"a"}},
 			},
 			wantErr: true,
 			errMsg:  "circular dependency",
@@ -63,7 +63,7 @@ func TestNewTaskGraph(t *testing.T) {
 		{
 			name: "self dependency",
 			tasks: map[string]config.Task{
-				"a": {Depends: []string{"task:a"}},
+				"a": {Depends: []string{"a"}},
 			},
 			wantErr: true,
 			errMsg:  "circular dependency",
@@ -71,9 +71,9 @@ func TestNewTaskGraph(t *testing.T) {
 		{
 			name: "longer cycle",
 			tasks: map[string]config.Task{
-				"a": {Depends: []string{"task:b"}},
-				"b": {Depends: []string{"task:c"}},
-				"c": {Depends: []string{"task:a"}},
+				"a": {Depends: []string{"b"}},
+				"b": {Depends: []string{"c"}},
+				"c": {Depends: []string{"a"}},
 			},
 			wantErr: true,
 			errMsg:  "circular dependency",
@@ -82,9 +82,9 @@ func TestNewTaskGraph(t *testing.T) {
 			name: "diamond dependency (no cycle)",
 			tasks: map[string]config.Task{
 				"a": {},
-				"b": {Depends: []string{"task:a"}},
-				"c": {Depends: []string{"task:a"}},
-				"d": {Depends: []string{"task:b", "task:c"}},
+				"b": {Depends: []string{"a"}},
+				"c": {Depends: []string{"a"}},
+				"d": {Depends: []string{"b", "c"}},
 			},
 			wantErr: false,
 		},
@@ -130,7 +130,7 @@ func TestTaskGraph_ExecutionOrder(t *testing.T) {
 			name: "task with dependency",
 			tasks: map[string]config.Task{
 				"build": {},
-				"test":  {Depends: []string{"task:build"}},
+				"test":  {Depends: []string{"build"}},
 			},
 			target:    "test",
 			wantLen:   2,
@@ -141,8 +141,8 @@ func TestTaskGraph_ExecutionOrder(t *testing.T) {
 			name: "chain of three",
 			tasks: map[string]config.Task{
 				"a": {},
-				"b": {Depends: []string{"task:a"}},
-				"c": {Depends: []string{"task:b"}},
+				"b": {Depends: []string{"a"}},
+				"c": {Depends: []string{"b"}},
 			},
 			target:    "c",
 			wantLen:   3,
@@ -153,7 +153,7 @@ func TestTaskGraph_ExecutionOrder(t *testing.T) {
 			name: "only includes needed tasks",
 			tasks: map[string]config.Task{
 				"a":        {},
-				"b":        {Depends: []string{"task:a"}},
+				"b":        {Depends: []string{"a"}},
 				"unneeded": {},
 			},
 			target:    "b",
@@ -203,8 +203,8 @@ func TestTaskGraph_ExecutionOrder(t *testing.T) {
 func TestTaskGraph_Dependencies(t *testing.T) {
 	tasks := map[string]config.Task{
 		"a": {},
-		"b": {Depends: []string{"task:a"}},
-		"c": {Depends: []string{"task:a", "task:b"}},
+		"b": {Depends: []string{"a"}},
+		"c": {Depends: []string{"a", "b"}},
 	}
 
 	graph, err := runner.NewTaskGraph(tasks)
@@ -240,14 +240,14 @@ func TestNewTaskGraph_AfterHooks(t *testing.T) {
 			name: "valid after-hook",
 			tasks: map[string]config.Task{
 				"build": {},
-				"hook":  {After: []string{"task:build"}},
+				"hook":  {After: []string{"build"}},
 			},
 			wantErr: false,
 		},
 		{
 			name: "unknown after-hook target",
 			tasks: map[string]config.Task{
-				"hook": {After: []string{"task:missing"}},
+				"hook": {After: []string{"missing"}},
 			},
 			wantErr: true,
 			errMsg:  "unknown task",
@@ -255,8 +255,8 @@ func TestNewTaskGraph_AfterHooks(t *testing.T) {
 		{
 			name: "cycle via after and depends",
 			tasks: map[string]config.Task{
-				"a": {After: []string{"task:b"}},
-				"b": {Depends: []string{"task:a"}},
+				"a": {After: []string{"b"}},
+				"b": {Depends: []string{"a"}},
 			},
 			wantErr: true,
 			errMsg:  "circular dependency",
@@ -292,7 +292,7 @@ func TestTaskGraph_ExecutionOrder_AfterHooks(t *testing.T) {
 			name: "basic after-hook pulls in hook task",
 			tasks: map[string]config.Task{
 				"build": {},
-				"hook":  {After: []string{"task:build"}},
+				"hook":  {After: []string{"build"}},
 			},
 			target:    "build",
 			wantTasks: []string{"build", "hook"},
@@ -303,7 +303,7 @@ func TestTaskGraph_ExecutionOrder_AfterHooks(t *testing.T) {
 			name: "after-hook not triggered when target not run",
 			tasks: map[string]config.Task{
 				"build":     {},
-				"hook":      {After: []string{"task:build"}},
+				"hook":      {After: []string{"build"}},
 				"unrelated": {},
 			},
 			target:    "unrelated",
@@ -315,8 +315,8 @@ func TestTaskGraph_ExecutionOrder_AfterHooks(t *testing.T) {
 			name: "transitive after-hooks",
 			tasks: map[string]config.Task{
 				"a": {},
-				"b": {After: []string{"task:a"}},
-				"c": {After: []string{"task:b"}},
+				"b": {After: []string{"a"}},
+				"c": {After: []string{"b"}},
 			},
 			target:    "a",
 			wantTasks: []string{"a", "b", "c"},
@@ -328,7 +328,7 @@ func TestTaskGraph_ExecutionOrder_AfterHooks(t *testing.T) {
 			tasks: map[string]config.Task{
 				"a":    {},
 				"d":    {},
-				"hook": {After: []string{"task:a"}, Depends: []string{"task:d"}},
+				"hook": {After: []string{"a"}, Depends: []string{"d"}},
 			},
 			target:    "a",
 			wantTasks: []string{"a", "d", "hook"},
@@ -371,8 +371,8 @@ func TestTaskGraph_ExecutionOrder_AfterHooks(t *testing.T) {
 func TestTaskGraph_AfterHooks_Accessor(t *testing.T) {
 	tasks := map[string]config.Task{
 		"build":  {},
-		"hook-a": {After: []string{"task:build"}},
-		"hook-b": {After: []string{"task:build"}},
+		"hook-a": {After: []string{"build"}},
+		"hook-b": {After: []string{"build"}},
 	}
 
 	graph, err := runner.NewTaskGraph(tasks)

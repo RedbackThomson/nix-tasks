@@ -53,12 +53,30 @@ func Load(ctx context.Context, eval Evaluator) (*Config, error) {
 	}
 
 	initializeMaps(cfg)
+	trimTaskPrefixes(cfg)
 
 	if err := Validate(cfg); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
 	return cfg, nil
+}
+
+// trimTaskPrefixes strips the optional "task:" prefix from depends and after
+// so the rest of nix-tasks only ever sees bare task names.
+func trimTaskPrefixes(cfg *Config) {
+	trim := func(refs []string) []string {
+		out := make([]string, len(refs))
+		for i, r := range refs {
+			out[i] = strings.TrimPrefix(r, TaskDependencyPrefix)
+		}
+		return out
+	}
+	for name, task := range cfg.Tasks {
+		task.Depends = trim(task.Depends)
+		task.After = trim(task.After)
+		cfg.Tasks[name] = task
+	}
 }
 
 // configJSON is the top level of a config. Each field is nil when its key is
