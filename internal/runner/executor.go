@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/cache"
@@ -50,6 +51,12 @@ type Options struct {
 	// DevEnvDir caches task shell environments. Empty means the devenv
 	// directory under the nix-tasks cache directory.
 	DevEnvDir string
+
+	// LogDir receives <task>.log with the combined output of every task
+	// that runs. Empty means no logs are written.
+	LogDir string
+	// Warn reports a problem that does not fail the run; nil drops it.
+	Warn func(msg string)
 }
 
 // Executor runs a task and its dependencies
@@ -74,6 +81,9 @@ func NewExecutor(n Nix, cfg *config.Config, opts Options) *Executor {
 	if !opts.NoCache && opts.ProjectKey != "" {
 		store = cache.NewStore(opts.ProjectKey)
 	}
+	if opts.Warn == nil {
+		opts.Warn = func(string) {}
+	}
 	var reporter Reporter = discardReporter{}
 	if opts.Reporter != nil {
 		reporter = opts.Reporter
@@ -87,10 +97,29 @@ func NewExecutor(n Nix, cfg *config.Config, opts Options) *Executor {
 	}
 }
 
-// execTask executes a single task (dispatches to type-specific implementation)
-func (e *Executor) execTask(ctx context.Context, name string, task config.Task) error {
+// execTask executes a single task (dispatches to type-specific
+// implementation) and returns the path of its log, if it has one.
+func (e *Executor) execTask(ctx context.Context, name string, task config.Task) (string, error) {
 	e.reporter.TaskStarted(name)
 
+	stdout, stderr := e.reporter.TaskOutput(name)
+	log := e.openLog(name)
+	if log == nil {
+		return "", e.dispatch(ctx, name, task, stdout, stderr)
+	}
+	defer log.close()
+	w := &lockedWriter{w: log.file}
+	logStdout := io.MultiWriter(stdout, w)
+	logStderr := logStdout
+	// Keeping one writer when the reporter merges the streams lets the task
+	// share a single pipe, so the log keeps its output in order.
+	if stderr != stdout {
+		logStderr = io.MultiWriter(stderr, w)
+	}
+	return log.path, e.dispatch(ctx, name, task, logStdout, logStderr)
+}
+
+func (e *Executor) dispatch(ctx context.Context, name string, task config.Task, stdout, stderr io.Writer) error {
 	// Default to shell type if not specified
 	taskType := task.Type
 	if taskType == "" {
@@ -99,9 +128,9 @@ func (e *Executor) execTask(ctx context.Context, name string, task config.Task) 
 
 	switch taskType {
 	case config.TaskTypeShell:
-		return e.runShellTask(ctx, name, task)
+		return e.runShellTask(ctx, name, task, stdout, stderr)
 	case config.TaskTypeBuild:
-		return e.runBuildTask(ctx, name)
+		return e.runBuildTask(ctx, name, stderr)
 	default:
 		return fmt.Errorf("unknown task type: %s", taskType)
 	}
@@ -126,13 +155,11 @@ func taskScript(task config.Task) string {
 // runShellTask runs a shell task's script with bash in the environment of
 // the task's shell. A task with nothing to run, such as one that only groups
 // other tasks, succeeds without realising its shell.
-func (e *Executor) runShellTask(ctx context.Context, name string, task config.Task) error {
+func (e *Executor) runShellTask(ctx context.Context, name string, task config.Task, stdout, stderr io.Writer) error {
 	script := taskScript(task)
 	if script == "" {
 		return nil
 	}
-
-	stdout, stderr := e.reporter.TaskOutput(name)
 
 	drvPath := task.ShellDrvPath
 	if drvPath == "" {
@@ -197,13 +224,12 @@ func envValue(env []string, key string) string {
 
 // runBuildTask builds the task's nixTasksBuilds flake attribute and links
 // its outputs
-func (e *Executor) runBuildTask(ctx context.Context, name string) error {
+func (e *Executor) runBuildTask(ctx context.Context, name string, taskStderr io.Writer) error {
 	attr := nix.NixTasksBuildsAttr(nix.CurrentSystem(), name)
 	cmd := e.nix.BuildCmd(ctx, attr)
 	isolateProcessGroup(cmd)
 
 	var stdout, stderr bytes.Buffer
-	_, taskStderr := e.reporter.TaskOutput(name)
 	cmd.Stdout = &stdout
 	cmd.Stderr = io.MultiWriter(taskStderr, &stderr)
 
@@ -251,4 +277,51 @@ func (e *Executor) linkBuildOutputs(name string, outputs map[string]string) erro
 	}
 
 	return nil
+}
+
+// logFile is a task's open log.
+type logFile struct {
+	file *os.File
+	path string
+	warn func(string)
+}
+
+func (l *logFile) close() {
+	if err := l.file.Close(); err != nil {
+		l.warn(fmt.Sprintf("failed to write log %s: %v", l.path, err))
+	}
+}
+
+// openLog creates name's log in LogDir. It returns nil when there is no
+// LogDir or the log cannot be created; the task still runs.
+func (e *Executor) openLog(name string) *logFile {
+	if e.options.LogDir == "" {
+		return nil
+	}
+	path := filepath.Join(e.options.LogDir, LogFileName(name))
+	f, err := os.Create(path)
+	if err != nil {
+		e.options.Warn(fmt.Sprintf("task %s runs without a log: %v", name, err))
+		return nil
+	}
+	return &logFile{file: f, path: path, warn: e.options.Warn}
+}
+
+// LogFileName is the name of a task's log in a run's log directory. Task
+// names may contain "/", which would otherwise make a subdirectory.
+func LogFileName(name string) string {
+	return strings.ReplaceAll(name, string(filepath.Separator), "_") + ".log"
+}
+
+// lockedWriter serialises writes from a task's stdout and stderr, which
+// are copied to the log from separate goroutines.
+type lockedWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (l *lockedWriter) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.w.Write(p)
 }

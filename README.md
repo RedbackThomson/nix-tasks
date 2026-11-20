@@ -275,7 +275,7 @@ Commands:
   completions      Generate shell completions
 
 Global Flags:
-  --output         How run shows tasks: auto (default), tty, stream, plain or github
+  --output         How run shows tasks: auto (default), tty, stream, plain, github or json
   -v, --verbose    Same as --output=stream (alias: --stream)
   --color          Colour output: auto (default), always or never
   --debug          Show debug information
@@ -421,8 +421,69 @@ where the output goes:
 - **`plain`, the default when piped (`nix-tasks run build | tee log`)**: a line
   when each task starts and when it finishes; task output is held back and
   shown only for tasks that fail.
+- **`json`, only when asked for**: see [JSON](#json) below.
 
 An explicit `--output` mode wins over `-v` and the environment.
+
+##### JSON
+
+`--output=json` prints nothing while tasks run and then one JSON document on
+stdout, for scripts and CI:
+
+```bash
+$ nix-tasks run ci --output=json | jq -r '.tasks[] | select(.state == "failed") | .log'
+/home/you/.local/state/nix-tasks/runs/20261120T091502.123Z-3fa9c1/test.log
+```
+
+```json
+{
+  "version": 1,
+  "targets": ["ci"],
+  "flake": "/home/you/repo",
+  "system": "x86_64-linux",
+  "startedAt": "2026-11-20T09:15:02.123Z",
+  "finishedAt": "2026-11-20T09:15:09.480Z",
+  "durationMs": 7357,
+  "exitCode": 2,
+  "error": null,
+  "counts": { "passed": 2, "failed": 1, "allowedFailures": 0, "cached": 1, "skipped": 1, "interrupted": 0 },
+  "warnings": [],
+  "tasks": [
+    {
+      "name": "test", "label": "test", "state": "failed", "cached": false,
+      "afterHook": false, "exitCode": 2, "error": "task 'test' failed: exit status 2",
+      "skipReason": null, "startedAt": "2026-11-20T09:15:04.401Z",
+      "finishedAt": "2026-11-20T09:15:08.501Z", "durationMs": 4100,
+      "log": "/home/you/.local/state/nix-tasks/runs/20261120T091502.123Z-3fa9c1/test.log"
+    }
+  ]
+}
+```
+
+- Task output is never in the document. Instead every task that runs writes
+  its combined stdout and stderr to its own log, named in `log`:
+  `$XDG_STATE_HOME/nix-tasks/runs/<run-id>/<task>.log`, where
+  `$XDG_STATE_HOME` defaults to `~/.local/state`. The run ID is the run's
+  start time in UTC and a random suffix (e.g. `20261120T091502.123Z-3fa9c1`),
+  so run directories sort oldest first, and a `/` in a task name becomes `_`.
+  Cached and skipped tasks have no log. Each JSON run removes all but the 20
+  most recent run directories. Other output modes write no run logs.
+- The document holds the results of the run, not the task definitions.
+  `afterHook` marks a task that is in the run because it is an `after` hook
+  of another task in it, and was not needed by the targets anyway.
+- Tasks are listed in dependency order: each after the tasks it depends on,
+  ties broken by name.
+- Every field is always present, `null` when it does not apply, so `jq`
+  queries need no existence checks.
+- The exit code is the same as in every other mode, and is also `exitCode`.
+  An error that stops the run before its tasks, such as a task name that
+  does not exist, still prints a document, with the message in `error`.
+- Warnings, such as a log directory that cannot be created, go to stderr and
+  into `warnings`; the tasks still run.
+- `--output=json` cannot be combined with `--raw`.
+
+[docs/json-output.md](docs/json-output.md) describes every field and the
+versioning rules.
 
 ##### GitHub Actions
 

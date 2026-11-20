@@ -13,6 +13,7 @@ const (
 	OutputStream = "stream"
 	OutputPlain  = "plain"
 	OutputGitHub = "github"
+	OutputJSON   = "json"
 )
 
 // OutputMode resolves --output, -v and the environment to the mode run uses.
