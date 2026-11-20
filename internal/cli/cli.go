@@ -23,6 +23,6 @@ type CLI struct {
 	Shell       ShellCmd       `cmd:"" help:"Enter a development shell"`
 	Cache       CacheCmd       `cmd:"" help:"Cache management commands"`
 	Validate    ValidateCmd    `cmd:"" help:"Validate configuration"`
-	TUI         TUICmd         `cmd:"" default:"withargs" help:"Launch interactive TUI (default)"`
+	TUI         TUICmd         `cmd:"" default:"withargs" help:"Launch interactive TUI (default; prints the list when stdout is not a terminal)"`
 	Completions CompletionsCmd `cmd:"" help:"Generate shell completions"`
 }

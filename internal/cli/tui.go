@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/redbackthomson/nix-tasks/internal/tui"
@@ -14,9 +13,9 @@ type TUICmd struct{}
 
 // Run executes the TUI command
 func (c *TUICmd) Run(globals *Globals) error {
-	// Check if we're in a TTY
+	// Scripts and pipes that run plain nix-tasks get something they can read.
 	if !ui.IsTerminal(os.Stdout) {
-		return fmt.Errorf("TUI requires an interactive terminal")
+		return (&ListCmd{}).Run(globals)
 	}
 
 	ctx := context.Background()

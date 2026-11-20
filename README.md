@@ -271,7 +271,7 @@ Commands:
   cache clean      Clear the task cache
   cache stats      Show cache statistics
   validate         Validate configuration
-  tui              Launch interactive TUI (default)
+  tui              Launch interactive TUI (default; prints the list when piped)
   completions      Generate shell completions
 
 Global Flags:
@@ -283,7 +283,7 @@ Global Flags:
 
 ### Interactive TUI
 
-When you run `nix-tasks` without arguments, it launches an interactive terminal UI:
+When you run `nix-tasks` without arguments in a terminal, it launches an interactive terminal UI. When stdout is not a terminal (a pipe or a script), it prints the same output as `nix-tasks list` instead:
 
 ```bash
 $ nix-tasks
