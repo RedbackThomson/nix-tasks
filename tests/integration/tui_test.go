@@ -5,6 +5,7 @@ package integration_test
 import (
 	"context"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -58,5 +59,26 @@ func TestTUI_NoTerminalQueriesOutsideTUI(t *testing.T) {
 		if strings.Contains(out, query) {
 			t.Errorf("expected no terminal query %q, got %q", query, out)
 		}
+	}
+}
+
+func TestTUI_PipedPrintsList(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "simple")
+
+	bare, stderr, err := runNixTasks(t, binary, "-f", flakePath)
+	if err != nil {
+		t.Fatalf("nix-tasks failed: %v\nstderr: %s", err, stderr)
+	}
+	list, stderr, err := runNixTasks(t, binary, "list", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("nix-tasks list failed: %v\nstderr: %s", err, stderr)
+	}
+	if bare != list {
+		t.Errorf("expected piped nix-tasks to print the list\ngot:\n%s\nwant:\n%s", bare, list)
+	}
+	if !strings.Contains(bare, "hello") {
+		t.Errorf("expected the hello task in output, got: %s", bare)
 	}
 }
