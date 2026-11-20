@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"sync"
 	"time"
@@ -32,56 +31,6 @@ func (p *Printer) TaskBuffer(name string) io.Writer {
 	buf := &bytes.Buffer{}
 	p.buffers[name] = buf
 	return buf
-}
-
-// TaskStarted prints task start message
-func (p *Printer) TaskStarted(name string) {
-	// In non-verbose mode, we don't print anything on start
-}
-
-// TaskSucceeded prints success message
-func (p *Printer) TaskSucceeded(name string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	_, _ = fmt.Fprintf(os.Stdout, "%s %s\n", Green("✓"), name)
-}
-
-// TaskSucceededWithDuration prints success message with duration
-func (p *Printer) TaskSucceededWithDuration(name string, duration time.Duration) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Green("✓"), name, Gray(FormatDuration(duration)))
-}
-
-// TaskFailed prints failure message and buffered output
-func (p *Printer) TaskFailed(name string, err error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	_, _ = fmt.Fprintf(os.Stdout, "%s %s\n", Red("✗"), name)
-
-	// Print buffered output if we have it
-	if buf, ok := p.buffers[name]; ok && buf.Len() > 0 {
-		_, _ = fmt.Fprintf(os.Stdout, "%s\n", buf.String())
-	}
-}
-
-// TaskFailedWithDuration prints failure message with duration and buffered output
-func (p *Printer) TaskFailedWithDuration(name string, err error, duration time.Duration) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Red("✗"), name, Gray(FormatDuration(duration)))
-
-	// Print buffered output if we have it
-	if buf, ok := p.buffers[name]; ok && buf.Len() > 0 {
-		_, _ = fmt.Fprintf(os.Stdout, "%s\n", buf.String())
-	}
-}
-
-// TaskCached prints cached message
-func (p *Printer) TaskCached(name string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	_, _ = fmt.Fprintf(os.Stdout, "%s %s %s\n", Green("✓"), name, Gray("(cached)"))
 }
 
 // GetBuffer returns the buffered output for a task (empty if none or if verbose mode streamed it)
