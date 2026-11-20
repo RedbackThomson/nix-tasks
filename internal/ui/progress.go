@@ -48,6 +48,7 @@ type ProgressReporter struct {
 	interrupted  bool
 
 	outputs  outputBuffers
+	labels   map[string]string
 	notifyCh chan struct{}
 	done     chan struct{}
 	stopped  chan struct{}
@@ -56,6 +57,7 @@ type ProgressReporter struct {
 
 type liveTask struct {
 	name  string
+	label string
 	start time.Time
 	tail  *tailWriter
 }
@@ -144,10 +146,17 @@ func (p *ProgressReporter) Summary(graph *runner.TaskGraph, targets []string, re
 	writeSummary(p.opts.Out, graph, targets, results, p.outputs.get)
 }
 
+func (p *ProgressReporter) RunPlanned(plan runner.RunPlan) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.labels = plan.Labels
+}
+
 func (p *ProgressReporter) TaskStarted(name string) {
 	p.mu.Lock()
 	p.running = append(p.running, &liveTask{
 		name:  name,
+		label: labelOf(p.labels, name),
 		start: p.opts.Now(),
 		tail:  newTailWriter(p.opts.TailLines, p.notify),
 	})
@@ -262,7 +271,7 @@ func (p *ProgressReporter) regionRows() []string {
 	var rows []string
 	for _, t := range tasks {
 		elapsed := FormatDuration(now.Sub(t.start))
-		name := truncateWidth(t.name, width-4-len(elapsed))
+		name := truncateWidth(t.label, width-4-len(elapsed))
 		rows = append(rows, fmt.Sprintf("%s %s %s", Accent(spinner), name, Muted(elapsed)))
 		if perTask == 0 {
 			continue

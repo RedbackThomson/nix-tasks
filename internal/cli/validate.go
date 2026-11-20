@@ -37,6 +37,9 @@ func (c *ValidateCmd) Run(globals *Globals) error {
 	fmt.Printf("  Tasks: %d\n", len(cfg.Tasks))
 	fmt.Printf("  Packages: %d\n", len(cfg.Packages))
 	fmt.Printf("  Dev Shells: %d\n", len(cfg.DevShells))
+	for _, w := range config.LabelWarnings(cfg.Tasks) {
+		fmt.Printf("%s %s\n", ui.Warning("warning:"), w)
+	}
 
 	return nil
 }

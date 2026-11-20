@@ -70,7 +70,8 @@ visibly an abbreviation:
 
 1. **`label`, if the task sets one.** A new optional task option, for example
    `label = "ec2-crds";`. Standards modules can set labels for shared tasks.
-   Duplicate labels within a config are a validation error.
+   Duplicate labels within a config are a validation error, and so is a label
+   that is another task's name, since both would make two tasks look alike.
 2. **The full name, if it is at most 24 characters.**
 3. **Otherwise, the name with leading words abbreviated to initials.** Words are
    split on `-`, `_`, `.`, `:` and `/`, separators are kept, and the last two

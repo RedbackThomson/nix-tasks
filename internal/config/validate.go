@@ -52,6 +52,8 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	errs = append(errs, labelErrors(cfg.Tasks)...)
+
 	// Check shell packages reference valid packages
 	for shellName, shell := range cfg.DevShells {
 		for _, pkg := range shell.Packages {

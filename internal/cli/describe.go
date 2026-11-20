@@ -51,6 +51,10 @@ func describeTask(w io.Writer, graph *runner.TaskGraph, name string) {
 		fmt.Fprintf(w, "%s\n  %s\n\n", ui.Label("Description:"), task.Description)
 	}
 
+	if label := describeLabel(name, task, graphLabels(graph)); label != "" {
+		fmt.Fprintf(w, "%s\n  %s\n\n", ui.Label("Label:"), label)
+	}
+
 	printList(w, "Packages:", task.Deps)
 	printList(w, "Depends on:", task.Depends)
 	printList(w, "Runs after:", task.After)
@@ -75,6 +79,28 @@ func describeTask(w io.Writer, graph *runner.TaskGraph, name string) {
 			fmt.Fprintf(w, "  %s\n", ui.Muted(line))
 		}
 	}
+}
+
+// describeLabel says how streamed output names the task, or "" when it uses
+// the task's name.
+func describeLabel(name string, task config.Task, labels map[string]string) string {
+	switch {
+	case task.Label != "":
+		return task.Label
+	case labels[name] != "" && labels[name] != name:
+		return labels[name] + " (abbreviated; set `label` to choose one)"
+	}
+	return ""
+}
+
+// graphLabels returns the display labels of every task in graph, which
+// depend on the whole config.
+func graphLabels(graph *runner.TaskGraph) map[string]string {
+	tasks := map[string]config.Task{}
+	for _, name := range graph.Tasks() {
+		tasks[name], _ = graph.Task(name)
+	}
+	return config.Labels(tasks)
 }
 
 func printList(w io.Writer, heading string, items []string) {

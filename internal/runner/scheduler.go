@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"os/exec"
 	"slices"
 	"time"
@@ -102,6 +103,15 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, targets ...string)
 		}
 	}
 
+	if p, ok := e.reporter.(PlanReporter); ok {
+		p.RunPlanned(RunPlan{
+			Targets: targets,
+			Tasks:   planOrder(ready, remaining, dependents),
+			Labels:  config.Labels(e.config.Tasks),
+			Jobs:    e.options.Jobs,
+		})
+	}
+
 	results := make(map[string]TaskResult, len(order))
 	finish := func(r TaskResult) {
 		results[r.Name] = r
@@ -165,6 +175,27 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, targets ...string)
 		out = append(out, results[name])
 	}
 	return out, nil
+}
+
+// planOrder sorts the execution set topologically, taking the
+// alphabetically first ready task at each step.
+func planOrder(ready []string, remaining map[string]int, dependents map[string][]string) []string {
+	left := maps.Clone(remaining)
+	queue := slices.Clone(ready)
+	var order []string
+	for len(queue) > 0 {
+		slices.Sort(queue)
+		name := queue[0]
+		queue = queue[1:]
+		order = append(order, name)
+		for _, d := range dependents[name] {
+			left[d]--
+			if left[d] == 0 {
+				queue = append(queue, d)
+			}
+		}
+	}
+	return order
 }
 
 func skip(name string) TaskResult {

@@ -26,9 +26,11 @@ const (
 type Task struct {
 	Type        TaskType `json:"type"`
 	Description string   `json:"description"`
-	Deps        []string `json:"deps"`
-	Depends     []string `json:"depends"`
-	After       []string `json:"after,omitempty"`
+	// Label is a short name for the task in streamed output; see Labels.
+	Label   string   `json:"label,omitempty"`
+	Deps    []string `json:"deps"`
+	Depends []string `json:"depends"`
+	After   []string `json:"after,omitempty"`
 
 	// Shell task fields
 	Commands   []string          `json:"commands,omitempty"`
