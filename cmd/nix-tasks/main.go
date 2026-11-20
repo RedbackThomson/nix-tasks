@@ -28,7 +28,7 @@ func main() {
 		})))
 	}
 
-	ui.SetColor(ui.ResolveColor(ui.ColorMode(rootCmd.Globals.Color), os.Stdout))
+	ui.SetColor(rootCmd.Globals.ColorEnabled())
 	ctx.FatalIfErrorf(rootCmd.Globals.ResolveFlake())
 
 	err := ctx.Run(&rootCmd.Globals)

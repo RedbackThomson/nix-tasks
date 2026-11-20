@@ -119,16 +119,15 @@ func (c *RunCmd) Run(globals *Globals) error {
 	return nil
 }
 
-// newReporter picks how the run is shown: raw output for --raw, prefixed
-// streamed lines for -v and CI, a live display on a terminal, and start and
-// finish lines when piped.
+// newReporter picks how the run is shown: --raw wins over --output.
 func (c *RunCmd) newReporter(globals *Globals) ui.Reporter {
-	switch {
-	case c.Raw:
+	if c.Raw {
 		return ui.NewRawReporter(c.Tasks[0], os.Stdout, os.Stderr)
-	case globals.Verbose || os.Getenv("CI") != "":
+	}
+	switch globals.OutputMode() {
+	case OutputStream:
 		return ui.NewLineReporter(os.Stdout, true)
-	case ui.IsTerminal(os.Stdout):
+	case OutputTTY:
 		return ui.NewProgressReporter(ui.ProgressOptions{Out: os.Stdout})
 	}
 	return ui.NewLineReporter(os.Stdout, false)

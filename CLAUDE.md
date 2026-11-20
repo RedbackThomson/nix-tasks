@@ -416,7 +416,8 @@ func (c *counter) add(name string) {
 ```go
 // Globals contains flags available to all commands
 type Globals struct {
-	Verbose bool   `short:"v" aliases:"stream" help:"Stream task output as it runs, prefixed with the task name (default in CI)"`
+	Verbose bool   `short:"v" aliases:"stream" help:"Same as --output=stream"`
+	Output  string `enum:"auto,tty,stream,plain" default:"auto" help:"How run shows tasks: ..."`
 	Color   string `enum:"auto,always,never" default:"auto" help:"Colour output: auto, always or never. auto colours a terminal unless NO_COLOR is set"`
 	Debug   bool   `help:"Show debug information including Nix commands"`
 	Flake   string `short:"f" completion-predictor:"dir" help:"Path to flake" default:"."`
@@ -474,10 +475,11 @@ fmt.Printf("%s %s\n", ui.Failure("✗"), taskName)
 
 **Terminal vs CI:** use `ui.IsTerminal` for terminal checks. The runner only
 talks to a `ui.Reporter`; `RunCmd.newReporter` (`internal/cli/run.go`) picks
-one: `RawReporter` for `--raw`, a streaming `LineReporter` for `-v` and when
-`CI` is set, the `ProgressReporter` on a terminal, and otherwise a
-`LineReporter` that prints start and finish lines and shows output only for
-failed tasks.
+one: `RawReporter` for `--raw`, otherwise by `Globals.OutputMode()`
+(`internal/cli/output.go`), which resolves `--output`, `-v` and the
+environment: a streaming `LineReporter` for `stream` (`-v`, or `CI` set), the
+`ProgressReporter` for `tty` (a terminal), and for `plain` a `LineReporter`
+that prints start and finish lines and shows output only for failed tasks.
 
 ## Nix Integration Patterns
 

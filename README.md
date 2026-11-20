@@ -275,7 +275,8 @@ Commands:
   completions      Generate shell completions
 
 Global Flags:
-  -v, --verbose    Stream task output (alias: --stream)
+  --output         How run shows tasks: auto (default), tty, stream or plain
+  -v, --verbose    Same as --output=stream (alias: --stream)
   --color          Colour output: auto (default), always or never
   --debug          Show debug information
   -f, --flake      Path to flake (default: ".")
@@ -353,7 +354,7 @@ $ nix-tasks run build --force
 # Disable caching entirely
 $ nix-tasks run build --no-cache
 
-# Stream output in real-time (default in CI; same as -v)
+# Stream output in real-time (default in CI; same as -v and --output=stream)
 $ nix-tasks run build --stream
 ```
 
@@ -405,17 +406,21 @@ Every task in the run ends in one of these states:
 
 #### Output
 
-How a run is shown depends on where its output goes:
+`--output` chooses how a run is shown. The default, `auto`, picks a mode from
+where the output goes:
 
-- **Terminal**: a live region shows each running task with the last few lines
-  of its output. Each task's result line is printed once, above the region,
-  when it finishes.
-- **CI (`CI` is set), `-v` or `--stream`**: every line of task output is
-  printed as it arrives, prefixed with the task name, between a start line
-  and a result line. Lines from parallel tasks never interleave.
-- **Piped (`nix-tasks run build | tee log`)**: a line when each task starts
-  and when it finishes; task output is held back and shown only for tasks
-  that fail.
+- **`tty`, the default on a terminal**: a live region shows each running task
+  with the last few lines of its output. Each task's result line is printed
+  once, above the region, when it finishes.
+- **`stream`, the default in CI (`CI` is set); also `-v` or `--stream`**: every
+  line of task output is printed as it arrives, prefixed with the task name,
+  between a start line and a result line. Lines from parallel tasks never
+  interleave.
+- **`plain`, the default when piped (`nix-tasks run build | tee log`)**: a line
+  when each task starts and when it finishes; task output is held back and
+  shown only for tasks that fail.
+
+An explicit `--output` mode wins over `-v` and the environment.
 
 ```
 ▶ build
