@@ -40,7 +40,6 @@ func CurrentSystem() string {
 // Evaluator wraps Nix CLI operations
 type Evaluator struct {
 	flakePath string
-	debug     bool
 }
 
 // NewEvaluator creates a new Nix evaluator
@@ -48,11 +47,6 @@ func NewEvaluator(flakePath string) *Evaluator {
 	return &Evaluator{
 		flakePath: flakePath,
 	}
-}
-
-// SetDebug enables debug logging of Nix commands
-func (e *Evaluator) SetDebug(debug bool) {
-	e.debug = debug
 }
 
 // FlakePath returns the configured flake path
@@ -69,9 +63,7 @@ func (e *Evaluator) eval(ctx context.Context, attr string, extraArgs []string, r
 	expr := fmt.Sprintf("%s#%s", e.flakePath, attr)
 	args := append([]string{"eval", "--json", expr}, extraArgs...)
 
-	if e.debug {
-		slog.Debug("running nix command", "cmd", "nix", "args", args)
-	}
+	slog.Debug("running nix command", "cmd", "nix", "args", args)
 
 	cmd := exec.CommandContext(ctx, "nix", args...)
 	var stdout, stderr bytes.Buffer
@@ -102,9 +94,7 @@ func (e *Evaluator) BuildCmd(ctx context.Context, attr string) *exec.Cmd {
 	expr := fmt.Sprintf("%s#%s^*", e.flakePath, attr)
 	args := []string{"build", expr, "--no-link", "--json"}
 
-	if e.debug {
-		slog.Debug("running nix command", "cmd", "nix", "args", args)
-	}
+	slog.Debug("running nix command", "cmd", "nix", "args", args)
 
 	return exec.CommandContext(ctx, "nix", args...)
 }
@@ -164,9 +154,7 @@ func (e *Evaluator) ShellDrvPaths(ctx context.Context, system string, tasks []st
 func (e *Evaluator) PrintDevEnvCmd(ctx context.Context, drvPath, profile string) *exec.Cmd {
 	args := []string{"print-dev-env", "--json", "--profile", profile, drvPath + "^*"}
 
-	if e.debug {
-		slog.Debug("running nix command", "cmd", "nix", "args", args)
-	}
+	slog.Debug("running nix command", "cmd", "nix", "args", args)
 
 	return exec.CommandContext(ctx, "nix", args...)
 }

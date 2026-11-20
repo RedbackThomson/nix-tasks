@@ -48,7 +48,6 @@ func (c *RunCmd) Run(globals *Globals) error {
 
 	// Initialize Nix evaluator
 	eval := nix.NewEvaluator(globals.Flake)
-	eval.SetDebug(globals.Debug)
 
 	// Load configuration
 	slog.Debug("loading config", "flake", globals.Flake)
