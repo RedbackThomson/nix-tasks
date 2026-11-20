@@ -98,8 +98,9 @@ together.
   (`mkGoTask`'s description, `mkDockerTask`'s command, `mkMakeTask`'s
   description) are `mkDefault`, so a builder in one module no longer resets
   fields set by another.
-- **`nixTasksShells` contains only shell tasks**, and the new
-  `nixTasksShellDrvs.<system>.<task>` exposes each task shell's `drvPath`.
+- **`nixTasksShells` is gone.** The CLI runs shell tasks from
+  `nixTasksShellDrvs.<system>.<task>`, each task shell's `drvPath`, which
+  covers only shell tasks. Drop any `nixTasksShells` output you define.
 
 ## Full example: `examples/app-using-standards`
 

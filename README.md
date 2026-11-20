@@ -141,9 +141,8 @@ every system and returns the flake outputs the CLI reads.
 
 Modules receive `pkgs`, `lib` (nixpkgs' lib) and `tasksLib` (the nix-tasks
 builders, built with your `pkgs`). The flake outputs, each per system, are
-`nixTasksConfig`, `nixTasksShellDrvs` and `nixTasksBuilds` (read by the CLI),
-`nixTasksShells` (the task shells themselves) and `devShells` (for
-`nix develop`).
+`nixTasksConfig`, `nixTasksShellDrvs` and `nixTasksBuilds` (read by the CLI)
+and `devShells` (for `nix develop`).
 
 ### 2. List available tasks
 
@@ -790,8 +789,8 @@ nix-tasks.lib.mkFlakeOutputs {
 ```
 
 To evaluate a single system yourself, `nix-tasks.lib.evalConfig { pkgs; modules; }`
-returns that system's `nixTasksConfig`, `nixTasksShells`, `nixTasksShellDrvs`,
-`nixTasksBuilds` and `devShells`, plus the evaluated `config` and `options`.
+returns that system's `nixTasksConfig`, `nixTasksShellDrvs`, `nixTasksBuilds`
+and `devShells`, plus the evaluated `config` and `options`.
 
 Upgrading from the `evalConfig`/`extend`/modifier API? See
 [docs/migration.md](./docs/migration.md).

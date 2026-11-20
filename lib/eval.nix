@@ -60,8 +60,6 @@ in
     devShells = lib.mapAttrs serializeShell cfg.devShells;
   };
 
-  nixTasksShells = checked taskShells;
-
   nixTasksShellDrvs = checked taskShellDrvs;
 
   nixTasksBuilds = checked (lib.mapAttrs (name: task:
