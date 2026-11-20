@@ -137,7 +137,7 @@ func (c *RunCmd) Run(globals *Globals) error {
 			fmt.Println()
 			printSummary(results)
 			for _, r := range results {
-				if !r.Success && r.Output != "" && !errors.Is(r.Error, context.Canceled) {
+				if showsOutput(r) {
 					printFailedOutput(r)
 				}
 			}
@@ -154,42 +154,39 @@ func (c *RunCmd) Run(globals *Globals) error {
 		}
 	}
 
-	for _, r := range results {
-		if !r.Success && !errors.Is(r.Error, context.Canceled) {
-			return &ExitCodeError{
-				Code: failureExitCode(results),
-				Err:  errors.New("one or more tasks failed"),
-			}
-		}
+	switch code := runExitCode(results); code {
+	case 0:
+		return nil
+	case exitInterrupted:
+		return &ExitCodeError{Code: code, Err: errors.New("interrupted")}
+	default:
+		return &ExitCodeError{Code: code, Err: errors.New("one or more tasks failed")}
 	}
-
-	return nil
 }
 
 // printSummary prints the "Completed: N tasks (...)" summary line
 func printSummary(results []runner.TaskResult) {
-	var passed, failed, skipped int
+	counts := map[runner.TaskState]int{}
 	for _, r := range results {
-		switch {
-		case r.Success:
-			passed++
-		case errors.Is(r.Error, context.Canceled):
-			skipped++
-		default:
-			failed++
-		}
+		counts[r.State]++
 	}
 
 	fmt.Printf("Completed: %d tasks", len(results))
 	parts := []string{}
-	if passed > 0 {
-		parts = append(parts, fmt.Sprintf("%d passed", passed))
+	if n := counts[runner.Succeeded]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%d passed", n))
 	}
-	if failed > 0 {
-		parts = append(parts, ui.Red(fmt.Sprintf("%d failed", failed)))
+	if n := counts[runner.Failed]; n > 0 {
+		parts = append(parts, ui.Red(fmt.Sprintf("%d failed", n)))
 	}
-	if skipped > 0 {
-		parts = append(parts, fmt.Sprintf("%d skipped", skipped))
+	if n := counts[runner.FailedAllowed]; n > 0 {
+		parts = append(parts, ui.Yellow(fmt.Sprintf("%d failed (allowed)", n)))
+	}
+	if n := counts[runner.Skipped]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped", n))
+	}
+	if n := counts[runner.Interrupted]; n > 0 {
+		parts = append(parts, fmt.Sprintf("%d interrupted", n))
 	}
 	if len(parts) > 0 {
 		fmt.Printf(" (%s)", strings.Join(parts, ", "))
@@ -197,10 +194,30 @@ func printSummary(results []runner.TaskResult) {
 	fmt.Println()
 }
 
+func stateIcon(state runner.TaskState) string {
+	switch state {
+	case runner.Failed:
+		return ui.Red("✗")
+	case runner.FailedAllowed:
+		return ui.Yellow("!")
+	case runner.Skipped:
+		return ui.Gray("-")
+	case runner.Interrupted:
+		return ui.Yellow("⏹")
+	}
+	return ui.Green("✓")
+}
+
+// showsOutput reports whether a task's captured output is printed after the
+// run. Interrupted output is noise from the kill, not the cause.
+func showsOutput(r runner.TaskResult) bool {
+	return (r.State == runner.Failed || r.State == runner.FailedAllowed) && r.Output != ""
+}
+
 // printFailedOutput prints the tail of a failed task's output and its temp log file path
 func printFailedOutput(r runner.TaskResult) {
 	tail, tmpFile := tailAndSave(r.Name, r.Output)
-	fmt.Printf("%s %s\n", ui.Red("✗"), r.Name)
+	fmt.Printf("%s %s\n", stateIcon(r.State), r.Name)
 	for _, line := range strings.Split(strings.TrimRight(tail, "\n"), "\n") {
 		fmt.Printf("    %s\n", line)
 	}

@@ -160,7 +160,7 @@ func (e *Executor) runShellTask(ctx context.Context, name string, task config.Ta
 	slog.Debug("starting nix develop shell", "task", name, "shell", shellAttr)
 	start := time.Now()
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("task '%s' failed: %w", name, err)
+		return err
 	}
 	slog.Debug("nix develop shell exited", "task", name, "duration", time.Since(start))
 

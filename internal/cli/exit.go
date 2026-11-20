@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"os/exec"
 
@@ -23,23 +22,36 @@ func (e *ExitCodeError) Unwrap() error {
 	return e.Err
 }
 
-// failureExitCode picks the process exit code for a failed run. Only an
-// unambiguous failure (a single task whose process exited non-zero) passes its
-// code through, so callers and CI see e.g. a test runner's own exit status.
-func failureExitCode(results []runner.TaskResult) int {
+// exitInterrupted is the conventional exit code for a run stopped by SIGINT.
+const exitInterrupted = 130
+
+// runExitCode picks the process exit code for a run: 0 when nothing failed.
+// Only an unambiguous failure (a single task whose process exited non-zero)
+// passes its code through, so callers and CI see e.g. a test runner's own
+// exit status. Real failures outrank interruption, since a fail-fast run
+// interrupts the siblings of the task that failed.
+func runExitCode(results []runner.TaskResult) int {
 	var failed []runner.TaskResult
+	interrupted := false
 	for _, r := range results {
-		if !r.Success && !errors.Is(r.Error, context.Canceled) {
+		switch r.State {
+		case runner.Failed:
 			failed = append(failed, r)
+		case runner.Interrupted:
+			interrupted = true
 		}
 	}
-	if len(failed) != 1 {
+	switch {
+	case len(failed) == 1:
+		var exitErr *exec.ExitError
+		if errors.As(failed[0].Error, &exitErr) && exitErr.ExitCode() > 0 {
+			return exitErr.ExitCode()
+		}
 		return 1
+	case len(failed) > 1:
+		return 1
+	case interrupted:
+		return exitInterrupted
 	}
-
-	var exitErr *exec.ExitError
-	if errors.As(failed[0].Error, &exitErr) && exitErr.ExitCode() > 0 {
-		return exitErr.ExitCode()
-	}
-	return 1
+	return 0
 }

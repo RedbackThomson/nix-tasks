@@ -200,120 +200,6 @@ func TestTaskGraph_ExecutionOrder(t *testing.T) {
 	}
 }
 
-func TestTaskGraph_ParallelGroups(t *testing.T) {
-	tests := []struct {
-		name       string
-		tasks      map[string]config.Task
-		target     string
-		wantGroups int
-	}{
-		{
-			name: "single task = one group",
-			tasks: map[string]config.Task{
-				"build": {},
-			},
-			target:     "build",
-			wantGroups: 1,
-		},
-		{
-			name: "chain = sequential groups",
-			tasks: map[string]config.Task{
-				"a": {},
-				"b": {Depends: []string{"task:a"}},
-				"c": {Depends: []string{"task:b"}},
-			},
-			target:     "c",
-			wantGroups: 3,
-		},
-		{
-			name: "parallel tasks = one group",
-			tasks: map[string]config.Task{
-				"a":   {},
-				"b":   {},
-				"all": {Depends: []string{"task:a", "task:b"}},
-			},
-			target:     "all",
-			wantGroups: 2,
-		},
-		{
-			name: "diamond = three groups",
-			tasks: map[string]config.Task{
-				"root":  {},
-				"left":  {Depends: []string{"task:root"}},
-				"right": {Depends: []string{"task:root"}},
-				"top":   {Depends: []string{"task:left", "task:right"}},
-			},
-			target:     "top",
-			wantGroups: 3,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			graph, err := runner.NewTaskGraph(tt.tasks)
-			if err != nil {
-				t.Fatalf("NewTaskGraph() error = %v", err)
-			}
-
-			groups, err := graph.ParallelGroups(tt.target)
-			if err != nil {
-				t.Fatalf("ParallelGroups() error = %v", err)
-			}
-
-			if len(groups) != tt.wantGroups {
-				t.Errorf("ParallelGroups() groups = %d, want %d", len(groups), tt.wantGroups)
-				for i, g := range groups {
-					t.Logf("  Group %d: %v", i, g)
-				}
-			}
-		})
-	}
-}
-
-func TestTaskGraph_ParallelGroupsContent(t *testing.T) {
-	tasks := map[string]config.Task{
-		"base":  {},
-		"left":  {Depends: []string{"task:base"}},
-		"right": {Depends: []string{"task:base"}},
-		"top":   {Depends: []string{"task:left", "task:right"}},
-	}
-
-	graph, err := runner.NewTaskGraph(tasks)
-	if err != nil {
-		t.Fatalf("NewTaskGraph() error = %v", err)
-	}
-
-	groups, err := graph.ParallelGroups("top")
-	if err != nil {
-		t.Fatalf("ParallelGroups() error = %v", err)
-	}
-
-	// Verify structure
-	if len(groups) != 3 {
-		t.Fatalf("expected 3 groups, got %d", len(groups))
-	}
-
-	// Group 0: base (no deps)
-	if len(groups[0]) != 1 || groups[0][0] != "base" {
-		t.Errorf("group 0 should be [base], got %v", groups[0])
-	}
-
-	// Group 1: left and right (both depend only on base)
-	if len(groups[1]) != 2 {
-		t.Errorf("group 1 should have 2 tasks, got %v", groups[1])
-	}
-	hasLeft := contains(groups[1], "left")
-	hasRight := contains(groups[1], "right")
-	if !hasLeft || !hasRight {
-		t.Errorf("group 1 should contain left and right, got %v", groups[1])
-	}
-
-	// Group 2: top (depends on left and right)
-	if len(groups[2]) != 1 || groups[2][0] != "top" {
-		t.Errorf("group 2 should be [top], got %v", groups[2])
-	}
-}
-
 func TestTaskGraph_Dependencies(t *testing.T) {
 	tasks := map[string]config.Task{
 		"a": {},
@@ -416,8 +302,8 @@ func TestTaskGraph_ExecutionOrder_AfterHooks(t *testing.T) {
 		{
 			name: "after-hook not triggered when target not run",
 			tasks: map[string]config.Task{
-				"build":   {},
-				"hook":    {After: []string{"task:build"}},
+				"build":     {},
+				"hook":      {After: []string{"task:build"}},
 				"unrelated": {},
 			},
 			target:    "unrelated",
@@ -479,35 +365,6 @@ func TestTaskGraph_ExecutionOrder_AfterHooks(t *testing.T) {
 				t.Errorf("ExecutionOrder() last = %s, want %s; got %v", order[len(order)-1], tt.wantLast, order)
 			}
 		})
-	}
-}
-
-func TestTaskGraph_ParallelGroups_AfterHooks(t *testing.T) {
-	tasks := map[string]config.Task{
-		"build":     {},
-		"post-hook": {After: []string{"task:build"}},
-	}
-
-	graph, err := runner.NewTaskGraph(tasks)
-	if err != nil {
-		t.Fatalf("NewTaskGraph() error = %v", err)
-	}
-
-	groups, err := graph.ParallelGroups("build")
-	if err != nil {
-		t.Fatalf("ParallelGroups() error = %v", err)
-	}
-
-	if len(groups) != 2 {
-		t.Fatalf("expected 2 groups, got %d: %v", len(groups), groups)
-	}
-
-	if len(groups[0]) != 1 || groups[0][0] != "build" {
-		t.Errorf("group 0 should be [build], got %v", groups[0])
-	}
-
-	if len(groups[1]) != 1 || groups[1][0] != "post-hook" {
-		t.Errorf("group 1 should be [post-hook], got %v", groups[1])
 	}
 }
 

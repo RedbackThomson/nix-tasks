@@ -99,10 +99,10 @@ func stripANSI(s string) string {
 	return ansiPattern.ReplaceAllString(s, "")
 }
 
-var summaryLinePattern = regexp.MustCompile(`^\s*(✓|✗|-) (\S+)(?: \(.*\))?$`)
+var summaryLinePattern = regexp.MustCompile(`^\s*(✓|✗|!|-|⏹) (\S+)(?: \(.*\))?$`)
 
-// taskStatuses parses the run summary into task name -> "passed", "failed"
-// or "skipped".
+// taskStatuses parses the run summary into task name -> "passed", "failed",
+// "allowed" (failed with continueOnError), "skipped" or "interrupted".
 func taskStatuses(stdout string) map[string]string {
 	statuses := map[string]string{}
 	for _, line := range strings.Split(stripANSI(stdout), "\n") {
@@ -115,8 +115,12 @@ func taskStatuses(stdout string) map[string]string {
 			statuses[m[2]] = "passed"
 		case "✗":
 			statuses[m[2]] = "failed"
+		case "!":
+			statuses[m[2]] = "allowed"
 		case "-":
 			statuses[m[2]] = "skipped"
+		case "⏹":
+			statuses[m[2]] = "interrupted"
 		}
 	}
 	return statuses
@@ -503,8 +507,11 @@ func TestRun_ContinueOnError(t *testing.T) {
 	if statuses["after-continue"] != "passed" {
 		t.Errorf("expected after-continue to pass, got %v\noutput: %s", statuses, stdout)
 	}
-	if _, ok := statuses["fail-continue"]; !ok {
-		t.Errorf("expected fail-continue in summary, got %v", statuses)
+	if statuses["fail-continue"] != "allowed" {
+		t.Errorf("expected fail-continue to be an allowed failure, got %v\noutput: %s", statuses, stdout)
+	}
+	if !strings.Contains(stdout, "This will fail but continue...") {
+		t.Errorf("expected allowed failure output in summary, got: %s", stdout)
 	}
 
 	ran := readLines(t, filepath.Join(workDir, "ran.log"))
@@ -539,7 +546,6 @@ func TestRun_ContinueOnErrorFlag(t *testing.T) {
 
 func TestRun_ContinueOnErrorFlagSkipsDependents(t *testing.T) {
 	skipIfNoNix(t)
-	t.Skip("known bug: --continue-on-error still runs tasks whose dependency failed")
 	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "failing")
 	workDir := t.TempDir()
