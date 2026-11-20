@@ -2,13 +2,16 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
+	"github.com/redbackthomson/nix-tasks/internal/runner"
 	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
@@ -42,9 +45,11 @@ type Model struct {
 	loadErr error
 	spinner int
 
-	config *config.Config
-	tasks  []string
-	shells []string
+	config   *config.Config
+	tasks    []string
+	shells   []string
+	graph    *runner.TaskGraph
+	graphErr error
 
 	mode   Mode
 	cursor int
@@ -52,8 +57,18 @@ type Model struct {
 	width  int
 	height int
 
+	// filter narrows the active list; filtering is set while it is typed.
+	filter    string
+	filtering bool
+
 	showHelp bool
 	status   string
+
+	// graphView shows graphLines, the dependency tree of graphTask.
+	graphView   bool
+	graphTask   string
+	graphLines  []string
+	graphOffset int
 }
 
 type configLoadedMsg struct {
@@ -127,6 +142,7 @@ func (m *Model) setConfig(cfg *config.Config) {
 	m.config = cfg
 	m.tasks = sortedKeys(cfg.Tasks)
 	m.shells = sortedKeys(cfg.DevShells)
+	m.graph, m.graphErr = runner.NewTaskGraph(cfg.Tasks)
 }
 
 func sortedKeys[V any](items map[string]V) []string {
@@ -156,12 +172,24 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if m.graphView {
+		return m.handleGraphKey(key), nil
+	}
+	if m.filtering {
+		return m.handleFilterKey(msg)
+	}
 
 	switch key {
 	case "q":
 		return m, tea.Quit
 	case "?":
 		m.showHelp = true
+	case "/":
+		m.filtering = true
+	case "esc":
+		m.setFilter("")
+	case "g":
+		m.openGraph()
 	case "up", "k":
 		m.moveCursor(-1)
 	case "down", "j":
@@ -182,12 +210,98 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// visible returns the names in the active list.
-func (m Model) visible() []string {
-	if m.mode == ShellMode {
-		return m.shells
+func (m Model) handleFilterKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.filtering = false
+		m.setFilter("")
+	case "enter":
+		m.filtering = false
+	case "backspace":
+		runes := []rune(m.filter)
+		if len(runes) > 0 {
+			m.setFilter(string(runes[:len(runes)-1]))
+		}
+	case "up":
+		m.moveCursor(-1)
+	case "down":
+		m.moveCursor(1)
+	default:
+		if msg.Text != "" && msg.Mod&^tea.ModShift == 0 {
+			m.setFilter(m.filter + msg.Text)
+		}
 	}
-	return m.tasks
+	return m, nil
+}
+
+// setFilter changes the filter, keeping the selected item selected when it
+// still matches.
+func (m *Model) setFilter(filter string) {
+	selected, _ := m.selected()
+	m.filter = filter
+	m.cursor = max(0, slices.Index(m.visible(), selected))
+	m.offset = 0
+	m.scrollToCursor()
+}
+
+// visible returns the names in the active list that match the filter.
+func (m Model) visible() []string {
+	items := m.tasks
+	if m.mode == ShellMode {
+		items = m.shells
+	}
+	if m.filter == "" {
+		return items
+	}
+	filter := strings.ToLower(m.filter)
+	var matched []string
+	for _, name := range items {
+		if strings.Contains(strings.ToLower(name), filter) ||
+			strings.Contains(strings.ToLower(m.summary(name)), filter) {
+			matched = append(matched, name)
+		}
+	}
+	return matched
+}
+
+func (m *Model) openGraph() {
+	name, ok := m.selected()
+	if m.mode != TaskMode || !ok {
+		return
+	}
+	m.graphView, m.graphTask, m.graphOffset = true, name, 0
+	if m.graphErr != nil {
+		m.graphLines = strings.Split(m.graphErr.Error(), "\n")
+		return
+	}
+	lines, err := ui.GraphTree(m.graph, name)
+	if err != nil {
+		lines = strings.Split(err.Error(), "\n")
+	}
+	m.graphLines = lines
+}
+
+func (m Model) handleGraphKey(key string) Model {
+	page := m.graphRows()
+	switch key {
+	case "esc", "q", "g":
+		m.graphView = false
+		return m
+	case "up", "k":
+		m.graphOffset--
+	case "down", "j":
+		m.graphOffset++
+	case "pgup", "ctrl+b":
+		m.graphOffset -= page
+	case "pgdown", "ctrl+f":
+		m.graphOffset += page
+	case "home":
+		m.graphOffset = 0
+	case "end":
+		m.graphOffset = len(m.graphLines)
+	}
+	m.graphOffset = max(0, min(m.graphOffset, len(m.graphLines)-page))
+	return m
 }
 
 func (m Model) selected() (string, bool) {
@@ -224,6 +338,8 @@ func (m *Model) switchMode() {
 	}
 	m.cursor = 0
 	m.offset = 0
+	m.filter = ""
+	m.filtering = false
 }
 
 func (m Model) runSelected() tea.Cmd {
