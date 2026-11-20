@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -63,8 +62,6 @@ type Model struct {
 	height    int
 	flakePath string
 	quitting  bool
-	runTask   string
-	runShell  string
 }
 
 // Tasks returns the list of task names
@@ -142,9 +139,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "enter", "r":
 			return m, m.runSelected()
-
-		case "?":
-			// Could show help overlay
 		}
 
 	case tea.WindowSizeMsg:
@@ -320,29 +314,8 @@ func Run(cfg *config.Config, flakePath string) error {
 	model := NewModel(cfg, flakePath)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
-	finalModel, err := p.Run()
-	if err != nil {
+	if _, err := p.Run(); err != nil {
 		return fmt.Errorf("error running TUI: %w", err)
-	}
-
-	// Check if we need to do anything after TUI exits
-	if m, ok := finalModel.(Model); ok {
-		if m.runTask != "" {
-			// Run the task
-			cmd := exec.Command("nix-tasks", "-f", flakePath, "run", m.runTask)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			return cmd.Run()
-		}
-		if m.runShell != "" {
-			// Enter the shell
-			cmd := exec.Command("nix-tasks", "-f", flakePath, "shell", m.runShell)
-			cmd.Stdin = os.Stdin
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-			return cmd.Run()
-		}
 	}
 
 	return nil
