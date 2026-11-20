@@ -86,7 +86,8 @@ nix flake check
 # Format code
 go fmt ./...
 
-# Run linter
+# Run linter (v2 config in .golangci.yml: every staticcheck check except
+# ST1000; also lints the integration tests)
 golangci-lint run ./...
 ```
 
