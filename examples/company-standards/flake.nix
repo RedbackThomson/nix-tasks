@@ -261,5 +261,12 @@
           config = lib.evalConfig (mkStandardConfig system);
         in config.nixTasksShells
       );
+
+      nixTasksBuilds = forAllSystems (system:
+        let
+          lib = nix-tasks.lib.${system};
+          config = lib.evalConfig (mkStandardConfig system);
+        in config.nixTasksBuilds
+      );
     };
 }

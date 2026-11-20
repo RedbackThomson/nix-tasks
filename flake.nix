@@ -156,5 +156,6 @@
       # Expose nix-tasks configuration for the CLI
       nixTasksConfig = forAllSystems (system: (mkTasksConfig system).nixTasksConfig);
       nixTasksShells = forAllSystems (system: (mkTasksConfig system).nixTasksShells);
+      nixTasksBuilds = forAllSystems (system: (mkTasksConfig system).nixTasksBuilds);
     };
 }

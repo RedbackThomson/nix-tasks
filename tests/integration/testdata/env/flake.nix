@@ -51,6 +51,7 @@
     in {
       nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
       nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
+      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
       devShells = forAllSystems (system: (mkConfig system).devShells);
     };
 }

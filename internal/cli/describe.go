@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -95,11 +96,9 @@ func (c *DescribeCmd) Run(globals *Globals) error {
 		fmt.Println()
 	}
 
-	if len(task.Outputs) > 0 {
-		fmt.Printf("%s\n", ui.Blue("Outputs:"))
-		for _, output := range task.Outputs {
-			fmt.Printf("  %s %s\n", ui.Gray("-"), output)
-		}
+	if task.Type == config.TaskTypeBuild {
+		fmt.Printf("%s\n  %s\n", ui.Blue("Builds:"), nix.NixTasksBuildsAttr(nix.CurrentSystem(), c.Task))
+		fmt.Printf("%s\n  %s\n\n", ui.Blue("Outputs linked to:"), filepath.Join(".nix-tasks", c.Task)+string(filepath.Separator))
 	}
 
 	// Show commands if verbose
