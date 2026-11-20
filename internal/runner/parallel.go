@@ -156,16 +156,8 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 				return
 			}
 
-			// Get task definition
-			task, ok := graph.Task(taskName)
-			if !ok {
-				results[idx] = TaskResult{
-					Name:    taskName,
-					Success: false,
-					Error:   &TaskNotFoundError{Name: taskName},
-				}
-				return
-			}
+			// ParallelGroups only yields names from the graph, so the lookup cannot miss.
+			task := graph.tasks[taskName]
 
 			// Execute task with timing
 			start := time.Now()
@@ -262,15 +254,6 @@ func (p *ParallelExecutor) skipTasks(tasks []string, err error) []TaskResult {
 		}
 	}
 	return results
-}
-
-// TaskNotFoundError indicates a task was not found
-type TaskNotFoundError struct {
-	Name string
-}
-
-func (e *TaskNotFoundError) Error() string {
-	return "task not found: " + e.Name
 }
 
 // TaskExecutionError indicates a task failed during execution

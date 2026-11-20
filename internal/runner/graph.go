@@ -11,7 +11,6 @@ import (
 type TaskGraph struct {
 	tasks      map[string]config.Task
 	edges      map[string][]string // task -> tasks it depends on
-	reverse    map[string][]string // task -> tasks that depend on it
 	afterHooks map[string][]string // target task -> tasks that run after it via "after"
 }
 
@@ -20,14 +19,12 @@ func NewTaskGraph(tasks map[string]config.Task) (*TaskGraph, error) {
 	g := &TaskGraph{
 		tasks:      tasks,
 		edges:      make(map[string][]string),
-		reverse:    make(map[string][]string),
 		afterHooks: make(map[string][]string),
 	}
 
 	// Initialize edges for all tasks
 	for name := range tasks {
 		g.edges[name] = []string{}
-		g.reverse[name] = []string{}
 		g.afterHooks[name] = []string{}
 	}
 
@@ -39,7 +36,6 @@ func NewTaskGraph(tasks map[string]config.Task) (*TaskGraph, error) {
 				return nil, fmt.Errorf("task '%s' depends on unknown task '%s'", name, depName)
 			}
 			g.edges[name] = append(g.edges[name], depName)
-			g.reverse[depName] = append(g.reverse[depName], name)
 		}
 	}
 
@@ -52,7 +48,6 @@ func NewTaskGraph(tasks map[string]config.Task) (*TaskGraph, error) {
 			}
 			g.afterHooks[depName] = append(g.afterHooks[depName], name)
 			g.edges[name] = append(g.edges[name], depName)
-			g.reverse[depName] = append(g.reverse[depName], name)
 		}
 	}
 
@@ -218,11 +213,6 @@ func (g *TaskGraph) ParallelGroups(target string) ([][]string, error) {
 // Dependencies returns the direct dependencies of a task
 func (g *TaskGraph) Dependencies(name string) []string {
 	return g.edges[name]
-}
-
-// Dependents returns tasks that directly depend on the given task
-func (g *TaskGraph) Dependents(name string) []string {
-	return g.reverse[name]
 }
 
 // AfterHooks returns tasks that run after the given task via the "after" field
