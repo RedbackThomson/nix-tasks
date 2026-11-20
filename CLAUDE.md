@@ -33,7 +33,7 @@ A unified system that provides:
 
 5. **Version consistency** - Shared package registry ensures tasks and dev shells use identical tool versions
 
-6. **Smart caching** - Hybrid Nix store + task-level fingerprinting for fast incremental builds
+6. **Smart caching** - Nix store for environments plus an opt-in task cache keyed on declared inputs and verified outputs
 
 ### Key Design Decisions
 
@@ -44,7 +44,7 @@ A unified system that provides:
 | Task execution | Hybrid declarative → shell scripts |
 | Dependencies | Explicit DAG with parallel execution |
 | Environment strategy | Shell inheritance/composition |
-| Caching | Nix store + task fingerprinting |
+| Caching | Nix store + opt-in task cache (declared inputs/outputs) |
 | Distribution | Flake inputs with version pinning |
 | Migration | Gradual with Make compatibility layer |
 
@@ -272,7 +272,7 @@ internal/
     nix/                  # nix CLI wrapper (evaluator.go) and its errors (errors.go)
     runner/               # Dependency graph (graph.go) and task execution
     runlog/               # Per-run task log directories for --output=json, and their pruning
-    cache/                # Fingerprints (fingerprint.go) and the on-disk store (store.go)
+    cache/                # Opt-in task cache: key (key.go), globbing (glob.go), per-repository store (store.go)
     ui/                   # Colours, run Reporters (progress, line, raw, github, json) and status printing
     tui/                  # Bubbletea app (app.go)
 lib/                      # Nix library: module options (module.nix), outputs (eval.nix), builders, Make compat, tests

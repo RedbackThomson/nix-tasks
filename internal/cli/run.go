@@ -29,8 +29,8 @@ type RunCmd struct {
 	Tasks           []string `arg:"" name:"task" completion-predictor:"task" help:"Tasks to run; several run together with one summary"`
 	Jobs            *int     `short:"j" help:"Number of tasks to run at once (default: $NIX_TASKS_JOBS, or else the number of CPUs available)"`
 	ContinueOnError bool     `help:"Continue running independent tasks on failure"`
-	Force           bool     `help:"Force re-run tasks even if cached"`
-	NoCache         bool     `help:"Disable caching (don't read or write cache)"`
+	Force           bool     `help:"Run cached tasks without looking them up, refreshing their cache entries"`
+	NoCache         bool     `help:"Disable the task cache: nothing is hashed, looked up or stored"`
 	Raw             bool     `help:"Pipe task output directly to stdout/stderr with no decoration"`
 }
 
@@ -120,10 +120,9 @@ func (c *RunCmd) run(globals *Globals, reporter ui.Reporter, warnings *warnings)
 	}
 	slog.Debug("task graph built")
 
-	// Compute project key for caching
-	projectKey := ""
-	if !c.NoCache {
-		projectKey = cache.ProjectKey(globals.Flake)
+	store, err := c.openCache(ctx, globals, cfg, graph, warnings.add)
+	if err != nil {
+		return err
 	}
 
 	// The JSON document holds no task output, so the logs are where it is.
@@ -138,8 +137,7 @@ func (c *RunCmd) run(globals *Globals, reporter ui.Reporter, warnings *warnings)
 		Jobs:            *c.Jobs,
 		ContinueOnError: c.ContinueOnError,
 		Force:           c.Force,
-		NoCache:         c.NoCache,
-		ProjectKey:      projectKey,
+		Cache:           store,
 		Reporter:        reporter,
 		FlakeRoot:       globals.FlakeRoot,
 		LogDir:          logDir,
@@ -161,6 +159,42 @@ func (c *RunCmd) run(globals *Globals, reporter ui.Reporter, warnings *warnings)
 		return &ExitCodeError{Code: code, Err: errors.New("one or more tasks failed")}
 	}
 	return nil
+}
+
+// openCache returns the store for the run, or nil when no task in it
+// declares a cache or caching is off. Warnings about cached tasks that can
+// never hit go to warnf here, before any task starts.
+func (c *RunCmd) openCache(ctx context.Context, globals *Globals, cfg *config.Config, graph *runner.TaskGraph, warnf func(string)) (*cache.Store, error) {
+	if c.NoCache {
+		return nil, nil
+	}
+	order, err := graph.ExecutionOrder(c.Tasks...)
+	if err != nil {
+		return nil, err
+	}
+	cached := slices.ContainsFunc(order, func(name string) bool { return cfg.Tasks[name].Cache != nil })
+	if !cached {
+		return nil, nil
+	}
+	if globals.FlakeRoot == "" {
+		warnf(fmt.Sprintf("the task cache is disabled: %s is not a local path", globals.Flake))
+		return nil, nil
+	}
+	for _, name := range order {
+		if w := config.AlwaysRunsWarning(cfg, name); w != "" {
+			warnf(w)
+		}
+	}
+	store := cache.Open(cache.Dir(), cache.ProjectKey(ctx, globals.FlakeRoot))
+	store.RemoveOrphans(func(task string) bool {
+		_, ok := cfg.Tasks[task]
+		return ok
+	})
+	return store, nil
+}
+
+func warn(format string, args ...any) {
+	_, _ = fmt.Fprintf(os.Stderr, "%s %s\n", ui.Warning("warning:"), fmt.Sprintf(format, args...))
 }
 
 // newReporter picks how the run is shown: --raw wins over --output.

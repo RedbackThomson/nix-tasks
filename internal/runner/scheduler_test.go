@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
+	"github.com/redbackthomson/nix-tasks/internal/nix"
 	"github.com/redbackthomson/nix-tasks/internal/runner"
 )
 
@@ -29,6 +30,9 @@ type fakeNix struct {
 	broken   map[string]bool   // tasks whose shell fails to evaluate
 	evals    [][]string
 	realised []string
+	// buildDrvs gives build tasks a derivation; a build task listed here
+	// builds successfully, others fail.
+	buildDrvs map[string]string
 }
 
 func (f *fakeNix) ShellDrvPaths(_ context.Context, _ string, tasks []string) (map[string]string, error) {
@@ -56,8 +60,27 @@ func (f *fakeNix) PrintDevEnvCmd(ctx context.Context, drvPath, profile string) *
 	return exec.CommandContext(ctx, "sh", "-c", `ln -sfn / "$1" && printf '%s' "$2"`, "sh", profile, env)
 }
 
-func (f *fakeNix) BuildCmd(ctx context.Context, _ string) *exec.Cmd {
+func (f *fakeNix) BuildCmd(ctx context.Context, attr string) *exec.Cmd {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for name := range f.buildDrvs {
+		if attr == nix.NixTasksBuildsAttr(nix.CurrentSystem(), name) {
+			return exec.CommandContext(ctx, "printf", `[{"outputs":{"out":"/nix/store/fake-%s"}}]`, name)
+		}
+	}
 	return exec.CommandContext(ctx, "false")
+}
+
+func (f *fakeNix) BuildDrvPaths(_ context.Context, _ string, tasks []string) (map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := map[string]string{}
+	for _, t := range tasks {
+		if drv, ok := f.buildDrvs[t]; ok {
+			out[t] = drv
+		}
+	}
+	return out, nil
 }
 
 // sh returns a task that runs script; scripts run in the test's temp dir.
@@ -403,44 +426,6 @@ func TestRun_StartsTasksWithoutWaitingForUnrelatedOnes(t *testing.T) {
 	h.run(context.Background(), tasks, "all")
 	if ran := h.ran(); !slices.Equal(ran, []string{"fast", "after", "slow"}) {
 		t.Errorf("after should not wait for slow, ran %v", ran)
-	}
-}
-
-func TestRun_Cache(t *testing.T) {
-	t.Setenv("NIX_TASKS_CACHE_DIR", t.TempDir())
-	h := newHarness(t)
-	h.opts.ProjectKey = "test"
-	if err := os.WriteFile(filepath.Join(h.dir, "input.txt"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cachedTask := func(script string) config.Task {
-		task := sh(script)
-		task.Inputs = []string{"input.txt"}
-		return task
-	}
-	tasks := map[string]config.Task{
-		"ok":  cachedTask("echo ok >> ran.log"),
-		"bad": cachedTask("echo bad >> ran.log; exit 1"),
-	}
-
-	first := h.run(context.Background(), tasks, "ok")
-	if r := first["ok"]; r.State != runner.Succeeded || r.Cached {
-		t.Fatalf("first run: %+v", r)
-	}
-	second := h.run(context.Background(), tasks, "ok")
-	if r := second["ok"]; r.State != runner.Succeeded || !r.Cached {
-		t.Fatalf("second run should be a cache hit: %+v", r)
-	}
-	if !slices.Equal(h.rec.events, []string{"finish ok"}) {
-		t.Errorf("a cache hit should be reported finished without starting, got %v", h.rec.events)
-	}
-
-	h.run(context.Background(), tasks, "bad")
-	if r := h.run(context.Background(), tasks, "bad")["bad"]; r.State != runner.Failed || r.Cached {
-		t.Errorf("failures must not be cached: %+v", r)
-	}
-	if ran := h.ran(); !slices.Equal(ran, []string{"ok", "bad", "bad"}) {
-		t.Errorf("ran %v", ran)
 	}
 }
 

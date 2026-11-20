@@ -3,13 +3,11 @@ package runner
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"maps"
 	"os/exec"
 	"slices"
 	"time"
 
-	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
 )
 
@@ -47,10 +45,19 @@ func (s TaskState) String() string {
 
 // TaskResult holds the result of a task execution
 type TaskResult struct {
-	Name   string
-	State  TaskState
+	Name  string
+	State TaskState
+	// Cached is set when a cache entry answered the task instead of a run.
 	Cached bool
-	Error  error
+	// Saved is how long the run that stored the answering entry took; zero
+	// unless Cached.
+	Saved time.Duration
+	// Cache describes the cache decision for a task that declares a cache;
+	// nil for other tasks and when the cache is disabled.
+	Cache *CacheOutcome
+	// Warnings are problems that did not fail the task.
+	Warnings []string
+	Error    error
 	// SkipReason says why a skipped task never started, e.g. "lint failed".
 	SkipReason string
 	// Start is when the task began; zero for skipped tasks.
@@ -59,6 +66,10 @@ type TaskResult struct {
 	// Log is the file holding the task's combined output, or "" when the
 	// task did not run (cached or skipped) or the run keeps no logs.
 	Log string
+
+	// key is the task's cache key, published to its dependents once the
+	// task has hit or run to completion with stable inputs.
+	key string
 }
 
 // ExitCode returns the exit status of the task's process, or -1 when the
@@ -88,6 +99,7 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, targets ...string)
 		}
 	}
 	e.devEnvs = newDevEnvs(e.nix, e.options.DevEnvDir, needShell)
+	e.evalBuildDrvs(ctx, graph, order)
 
 	remaining := make(map[string]int, len(order))
 	dependents := make(map[string][]string, len(order))
@@ -124,8 +136,12 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, targets ...string)
 	}
 
 	results := make(map[string]TaskResult, len(order))
+	keys := make(map[string]string, len(order))
 	finish := func(r TaskResult) {
 		results[r.Name] = r
+		if r.key != "" {
+			keys[r.Name] = r.key
+		}
 		e.reporter.TaskFinished(r)
 	}
 	var resolve func(r TaskResult)
@@ -160,8 +176,9 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, targets ...string)
 			ready = ready[1:]
 			running++
 			task := graph.tasks[name]
+			plan := e.planCache(graph, name, results, keys)
 			go func() {
-				r := e.runOne(runCtx, name, task)
+				r := e.runOne(runCtx, name, task, plan)
 				if r.State == Failed && !e.options.ContinueOnError {
 					cancel()
 				}
@@ -214,65 +231,26 @@ func skip(name, reason string) TaskResult {
 }
 
 // runOne runs a single task and classifies its outcome
-func (e *Executor) runOne(ctx context.Context, name string, task config.Task) TaskResult {
-	start := time.Now()
-	cached, log, err := e.runTask(ctx, name, task)
-	duration := time.Since(start)
+func (e *Executor) runOne(ctx context.Context, name string, task config.Task, plan cachePlan) TaskResult {
+	r := TaskResult{Name: name, Start: time.Now()}
+	err := e.runTask(ctx, name, task, plan, &r)
+	r.Duration = time.Since(r.Start)
 
-	state := Succeeded
 	switch {
 	case err == nil:
+		r.State = Succeeded
 	case ctx.Err() != nil:
-		state = Interrupted
+		r.State = Interrupted
 	case task.ContinueOnError:
-		state = FailedAllowed
+		r.State = FailedAllowed
 	default:
-		state = Failed
+		r.State = Failed
 	}
-
-	return TaskResult{
-		Name:     name,
-		State:    state,
-		Cached:   cached,
-		Error:    err,
-		Start:    start,
-		Duration: duration,
-		Log:      log,
-	}
-}
-
-// runTask executes a single task, answering from the cache when it can. Only
-// successful runs are cached, so a failure is always retried.
-func (e *Executor) runTask(ctx context.Context, name string, task config.Task) (cached bool, log string, err error) {
-	var fp *cache.Fingerprint
-	if e.cache != nil {
-		var fpErr error
-		fp, fpErr = cache.ComputeFingerprint(task, e.taskDir(task))
-		if fpErr != nil {
-			slog.Debug("failed to compute fingerprint", "task", name, "error", fpErr)
-		}
-		if fp == nil && !task.NoCache && task.Type != config.TaskTypeBuild && len(task.Inputs) == 0 {
-			slog.Debug("skipping cache: shell task has no declared inputs", "task", name)
-		}
-	}
-
-	if fp != nil && !e.options.Force {
-		if entry, ok := e.cache.Lookup(name, fp); ok && entry.Success {
-			return true, "", nil
-		}
-	}
-
-	log, err = e.execTask(ctx, name, task)
 	if err != nil {
-		return false, log, &TaskExecutionError{Name: name, Err: err}
+		r.Error = &TaskExecutionError{Name: name, Err: err}
+		r.key = ""
 	}
-
-	if fp != nil {
-		if storeErr := e.cache.Store(name, fp, true); storeErr != nil {
-			slog.Debug("failed to store cache entry", "task", name, "error", storeErr)
-		}
-	}
-	return false, log, nil
+	return r
 }
 
 // TaskExecutionError indicates a task failed during execution

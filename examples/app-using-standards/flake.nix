@@ -54,7 +54,10 @@
                 "       --go-grpc_out=. --go-grpc_opt=paths=source_relative \\"
                 "       api/v1/*.proto"
               ];
-              inputs = [ "api/**/*.proto" ];
+              cache = {
+                inputs = [ "api/**/*.proto" ];
+                outputs = [ "api/**/*.pb.go" ];
+              };
             };
 
             build-frontend = tasksLib.mkTask {
@@ -63,7 +66,6 @@
               commands = [
                 "cd frontend && npm ci && npm run build"
               ];
-              inputs = [ "frontend/**/*" ];
             };
 
             docker-build = tasksLib.mkTask {

@@ -197,7 +197,7 @@ func (r runResult) finishedBefore(t *testing.T, first, second string) bool {
 
 const jsonTasksConfig = `{
   tasks = {
-    hello = { commands = [ "echo hello-out" "echo hello-err >&2" ]; inputs = [ "flake.nix" ]; };
+    hello = { commands = [ "echo hello-out" "echo hello-err >&2" ]; cache = { inputs = [ "flake.nix" ]; outputs = [ ]; }; };
     fails = { commands = [ "echo about-to-fail" "exit 3" ]; };
     allowed = { commands = [ "exit 4" ]; continueOnError = true; };
     needs-fail = { depends = [ "fails" ]; commands = [ "echo unreachable" ]; };

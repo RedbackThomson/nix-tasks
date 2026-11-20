@@ -178,6 +178,26 @@ func TestSummary_NonExitErrorShown(t *testing.T) {
 	}
 }
 
+func TestSummary_WarningsShown(t *testing.T) {
+	SetColor(false)
+	var out bytes.Buffer
+	r := NewLineReporter(&out, false)
+	res := runner.TaskResult{Name: "gen", State: runner.Succeeded, Warnings: []string{"not cached: inputs changed while it ran: a.go"}}
+	r.TaskFinished(res)
+	r.Summary(testGraph(t, map[string][]string{"gen": nil}), []string{"gen"}, []runner.TaskResult{res})
+	want := "✓ gen (0ms)\n\ngen ✓ (0ms)\n\nwarning: gen: not cached: inputs changed while it ran: a.go\n\nCompleted: 1 tasks (1 passed)\n"
+	if out.String() != want {
+		t.Errorf("got:\n%s\nwant:\n%s", out.String(), want)
+	}
+
+	var stderr bytes.Buffer
+	raw := NewRawReporter("gen", io.Discard, &stderr)
+	raw.TaskFinished(res)
+	if stderr.String() != "warning: gen: not cached: inputs changed while it ran: a.go\n" {
+		t.Errorf("raw stderr = %q", stderr.String())
+	}
+}
+
 func TestWriteFailure_LogOnlyWhenTruncated(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("TMPDIR", tmp)

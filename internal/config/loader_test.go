@@ -91,6 +91,22 @@ func TestLoad(t *testing.T) {
 			},
 		},
 		{
+			name: "cache declaration and settings",
+			eval: &fakeEvaluator{values: map[string]string{
+				sys: `{"tasks":{"gen":{"type":"shell","commands":["gen"],"shellDrvPath":"/nix/store/x.drv","cache":{"inputs":["src/**"],"outputs":[],"maxEntries":3}}},"cacheSettings":{"maxEntriesPerTask":16}}`,
+			}},
+			wantCalls: 1,
+			check: func(t *testing.T, cfg *config.Config) {
+				c := cfg.Tasks["gen"].Cache
+				if c == nil || c.Outputs == nil || len(c.Outputs) != 0 || c.MaxEntries != 3 {
+					t.Errorf("cache = %+v; an empty outputs list must decode as non-nil", c)
+				}
+				if cfg.CacheSettings.MaxEntriesPerTask != 16 {
+					t.Errorf("cacheSettings = %+v", cfg.CacheSettings)
+				}
+			},
+		},
+		{
 			name: "packages as store-path map is rejected with a hint",
 			eval: &fakeEvaluator{values: map[string]string{
 				sys: `{"packages":{"go":"/nix/store/abc-go"},"tasks":{}}`,

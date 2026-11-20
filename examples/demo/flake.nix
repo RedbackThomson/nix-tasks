@@ -30,9 +30,14 @@
               commands = [
                 "echo 'Generating mocks...'"
                 "mkdir -p internal/mocks"
-                "echo '// Generated mock file' > internal/mocks/mocks.go"
+                "echo '// Code generated from api/greeting.json. DO NOT EDIT.' > internal/mocks/mocks.go"
                 "echo 'Generation complete'"
               ];
+              # Skipped while api/ and the generated file are unchanged.
+              cache = {
+                inputs = [ "api/**/*.json" ];
+                outputs = [ "internal/mocks/mocks.go" ];
+              };
             };
 
             # Build Tasks
@@ -48,7 +53,6 @@
                 "chmod +x bin/app"
                 "echo 'Build complete: bin/app'"
               ];
-              inputs = [ "**/*.go" "go.mod" ];
             };
 
             build-frontend = tasksLib.mkTask {
@@ -60,7 +64,6 @@
                 "echo '<html><body>Hello</body></html>' > dist/index.html"
                 "echo 'Frontend build complete'"
               ];
-              inputs = [ "frontend/**/*" ];
             };
 
             # Quality Tasks

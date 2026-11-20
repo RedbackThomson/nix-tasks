@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
 	"github.com/redbackthomson/nix-tasks/internal/runner"
@@ -37,12 +38,12 @@ func (c *DescribeCmd) Run(globals *Globals) error {
 		return fmt.Errorf("failed to build task graph: %w", err)
 	}
 
-	describeTask(os.Stdout, graph, c.Task)
+	describeTask(os.Stdout, cfg, graph, c.Task)
 	return nil
 }
 
 // describeTask writes the details of the named task, which must be in graph.
-func describeTask(w io.Writer, graph *runner.TaskGraph, name string) {
+func describeTask(w io.Writer, cfg *config.Config, graph *runner.TaskGraph, name string) {
 	task, _ := graph.Task(name)
 	var b strings.Builder
 
@@ -61,7 +62,9 @@ func describeTask(w io.Writer, graph *runner.TaskGraph, name string) {
 	printList(&b, "Runs after:", task.After)
 	printList(&b, "Depended on by:", graph.Dependents(name))
 	printList(&b, "After-hooked by:", graph.AfterHooks(name))
-	printList(&b, "Inputs:", task.Inputs)
+	if task.Type != config.TaskTypeBuild {
+		printCacheSection(&b, cfg, name)
+	}
 
 	if task.Type == config.TaskTypeBuild {
 		fmt.Fprintf(&b, "%s\n  %s\n", ui.Label("Builds:"), nix.NixTasksBuildsAttr(nix.CurrentSystem(), name))
@@ -103,6 +106,35 @@ func graphLabels(graph *runner.TaskGraph) map[string]string {
 		tasks[name], _ = graph.Task(name)
 	}
 	return config.Labels(tasks)
+}
+
+// printCacheSection shows what a task's cache hashes, without hashing
+// anything; whether it would hit now is run --explain's job.
+func printCacheSection(w *strings.Builder, cfg *config.Config, name string) {
+	c := cfg.Tasks[name].Cache
+	if c == nil {
+		fmt.Fprintf(w, "%s disabled\n\n", ui.Label("Cache:"))
+		return
+	}
+	fmt.Fprintf(w, "%s\n", ui.Label("Cache:"))
+	list := func(label string, items []string) {
+		if len(items) == 0 {
+			fmt.Fprintf(w, "  %s none\n", label)
+			return
+		}
+		fmt.Fprintf(w, "  %s\n", label)
+		for _, item := range items {
+			fmt.Fprintf(w, "    %s %s\n", ui.Muted("-"), item)
+		}
+	}
+	list("Inputs:", c.Inputs)
+	list("Outputs:", c.Outputs)
+	list("Env:", c.Env)
+	fmt.Fprintf(w, "  Max entries: %d\n", cache.MaxEntries(c.MaxEntries, cfg.CacheSettings.MaxEntriesPerTask))
+	if warning := config.AlwaysRunsWarning(cfg, name); warning != "" {
+		fmt.Fprintf(w, "  %s %s\n", ui.Warning("warning:"), warning)
+	}
+	w.WriteString("\n")
 }
 
 func printList(b *strings.Builder, heading string, items []string) {

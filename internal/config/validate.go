@@ -71,6 +71,7 @@ func Validate(cfg *Config) error {
 	}
 
 	errs = append(errs, nameErrors(cfg)...)
+	errs = append(errs, validateCache(cfg)...)
 
 	if len(errs) > 0 {
 		slices.Sort(errs)

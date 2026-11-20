@@ -160,6 +160,26 @@ func (e *Evaluator) PrintDevEnvCmd(ctx context.Context, drvPath, profile string)
 	return exec.CommandContext(ctx, "nix", args...)
 }
 
+// BuildDrvPaths returns the drvPath of each named build task's derivation.
+// It instantiates the derivations without building them.
+func (e *Evaluator) BuildDrvPaths(ctx context.Context, system string, tasks []string) (map[string]string, error) {
+	wanted := make(map[string]any, len(tasks))
+	for _, t := range tasks {
+		wanted[t] = nil
+	}
+	wantedJSON, err := json.Marshal(wanted)
+	if err != nil {
+		return nil, err
+	}
+	attr := "nixTasksBuilds." + QuoteAttr(system)
+	apply := fmt.Sprintf("builds: builtins.mapAttrs (n: _: builds.${n}.drvPath) (builtins.fromJSON %s)", NixString(string(wantedJSON)))
+	var drvs map[string]string
+	if err := e.eval(ctx, attr, []string{"--apply", apply}, &drvs); err != nil {
+		return nil, err
+	}
+	return drvs, nil
+}
+
 // UnbuildableTasks returns the sorted subset of tasks whose
 // nixTasksBuilds.<system> attribute is missing or not a derivation. Only
 // drvPath's presence is checked, so nothing is instantiated or built.

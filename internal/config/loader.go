@@ -85,6 +85,8 @@ type configJSON struct {
 	Packages  *json.RawMessage `json:"packages"`
 	Tasks     *json.RawMessage `json:"tasks"`
 	DevShells *json.RawMessage `json:"devShells"`
+	// CacheSettings is optional and does not make a config by itself.
+	CacheSettings *CacheSettings `json:"cacheSettings"`
 }
 
 // decodeConfig decodes each task and shell separately so a type error names
@@ -117,6 +119,10 @@ func decodeConfig(raw json.RawMessage) (*Config, error) {
 		return nil, err
 	}
 	cfg.DevShells = shells
+
+	if top.CacheSettings != nil {
+		cfg.CacheSettings = *top.CacheSettings
+	}
 
 	return cfg, nil
 }

@@ -96,7 +96,6 @@
       commands = [
         "go build -v ./..."
       ];
-      inputs = [ "**/*.go" "go.mod" "go.sum" ];
     };
 
     # Dependency management

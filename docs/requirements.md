@@ -97,16 +97,19 @@ outputs = { nixpkgs, nix-tasks, company-tasks, ... }:
 ### 9. Caching Strategy
 **Hybrid: Nix Store + Task-Level Caching**
 - Environment/dependencies cached via Nix store
-- Task execution results cached by fingerprint
+- Task execution results cached by a key over declared inputs, definition and toolchain
 - Nix binary caches (Cachix, S3) share the Nix layer; the task cache is local
 - Force rebuild flag to bypass cache for debugging
 
-**Inputs are opt-in for shell tasks.** A shell task is only cached when it
-declares `inputs`; without an explicit input set the fingerprint cannot detect
-source-file changes (e.g. switching git branches), so caching such a task
-would produce stale hits. Build tasks (`type = "build"`) are never cached at
-the task level: Nix already caches the derivation, and only `nix build` can
-tell whether it changed.
+**The task cache is opt-in.** A shell task is cached only when it sets
+`cache`, declaring the files it reads (`cache.inputs`), the files it writes
+(`cache.outputs`, verified on every hit) and the environment variables that
+affect it (`cache.env`). Without an explicit declaration nothing can tell a
+source change (e.g. switching git branches) from no change, so caching would
+produce stale hits. Build tasks (`type = "build"`) are never cached at the
+task level: Nix already caches the derivation, and only `nix build` can tell
+whether it changed. Results are kept locally, shared by every checkout of a
+repository; see [cache-redesign.md](./cache-redesign.md).
 
 ### 10. Environment Management
 **Composition/Inheritance**
@@ -164,7 +167,7 @@ devShells.default = { extends = "ci"; packages = ["kubectl" "jq"]; };
 
 ### Build System Features
 - **Dependency Graph**: Automatic parallelization based on DAG
-- **Caching**: Two-layer caching (Nix store + task fingerprints)
+- **Caching**: Two-layer caching (Nix store + opt-in task cache)
 - **Reproducibility**: Version-locked dependencies via Nix
 - **Flexibility**: Configurable failure strategies per task/run
 

@@ -22,7 +22,7 @@ func TestShellTaskOutputsIsAnError(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("expected list to fail, got success\nstdout: %s", stdout)
 	}
-	for _, want := range []string{"tasks.build.outputs", "does not exist"} {
+	for _, want := range []string{"task 'build'", "cache.outputs"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("expected %q in error, got: %s", want, stderr)
 		}
