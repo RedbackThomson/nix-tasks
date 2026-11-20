@@ -54,6 +54,6 @@ func printNames(w io.Writer, cfg *config.Config, shells bool) {
 		names = slices.Sorted(maps.Keys(cfg.Tasks))
 	}
 	for _, name := range names {
-		fmt.Fprintln(w, name)
+		_, _ = fmt.Fprintln(w, name)
 	}
 }

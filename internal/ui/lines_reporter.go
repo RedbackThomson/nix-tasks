@@ -72,7 +72,7 @@ func (r *LineReporter) TaskFinished(res runner.TaskResult) {
 	delete(r.writers, res.Name)
 	r.mu.Unlock()
 	if w != nil {
-		w.Close()
+		_ = w.Close()
 	}
 	if !failed(res) {
 		r.outputs.drop(res.Name)
