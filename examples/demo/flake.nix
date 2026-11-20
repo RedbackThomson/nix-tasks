@@ -54,7 +54,6 @@
                 "echo 'Build complete: bin/app'"
               ];
               inputs = [ "**/*.go" "go.mod" ];
-              outputs = [ "bin/app" ];
             };
 
             build-frontend = lib.mkTask {
@@ -67,7 +66,6 @@
                 "echo 'Frontend build complete'"
               ];
               inputs = [ "frontend/**/*" ];
-              outputs = [ "dist/" ];
             };
 
             # ============ Quality Tasks ============

@@ -60,19 +60,15 @@ devShells.default.packages = ["go" "docker" "kubectl"];
   - Commands: `list`, `describe`, `run`
   - Tasks have built-in descriptions, usage docs
 - **TUI**: Interactive menu for exploration
-  - Browse tasks, shells, configuration
-  - Shows dependencies and recent history
-- **Shell Integration**: Tasks as commands in dev shells
-  - Tab completion
-  - Natural workflow when in dev environment
+  - Browse tasks and shells, run a task or enter a shell
+- **Shell Integration**: `nix-tasks shell` enters the configured dev shells
+  - Tab completion for commands, task names and shell names
 
 ### 7. Error Handling
 **Configurable Failure Strategy**
-- Per-task or per-run configuration:
+- Per-task (`continueOnError`) or per-run (`--continue-on-error`) configuration:
   - Fail-fast (default)
-  - Continue-on-error
-  - Best-effort
-- Complete independent DAG branches even if one fails
+  - Continue-on-error: complete independent DAG branches even if one fails
 - Summary shows all successes/failures
 
 ### 8. Company Standards Distribution
@@ -99,7 +95,7 @@ outputs = { company-tasks, ... }: {
 **Hybrid: Nix Store + Task-Level Caching**
 - Environment/dependencies cached via Nix store
 - Task execution results cached by fingerprint
-- Binary cache (Cachix, S3) for team sharing
+- Nix binary caches (Cachix, S3) share the Nix layer; the task cache is local
 - Force rebuild flag to bypass cache for debugging
 
 **Inputs are opt-in for shell tasks.** A shell task is only cached when it
@@ -131,7 +127,7 @@ devShells.default = { extends = "ci"; packages = ["kubectl" "jq"]; };
 
 ### 12. Migration Strategy
 **Gradual with Make Compatibility**
-- Support running Make targets: `nix-tasks run make:build`
+- Wrap Make targets as tasks with the compat helpers (`importMakeTargets` creates e.g. `make-build`)
 - Migrate incrementally: hybrid state during transition
 - Eventually deprecate Make when fully migrated
 - Low friction, teams learn as they go
@@ -141,7 +137,7 @@ devShells.default = { extends = "ci"; packages = ["kubectl" "jq"]; };
 - **CI**: Streaming output with task prefixes
   - Real-time visibility
   - Interleaved logs show parallel execution
-- **Local Dev**: Buffered with structured display
+- **Local Dev**: Live progress display on a terminal; buffered when piped
   - Clean output, hide success details
   - Failed tasks show full output
   - Reduced noise during development
@@ -158,8 +154,8 @@ devShells.default = { extends = "ci"; packages = ["kubectl" "jq"]; };
 ### Developer Experience
 - **Discoverability**: `nix-tasks list`, `nix-tasks describe <task>`
 - **Interactive TUI**: Menu-driven task exploration
-- **Shell Integration**: Tasks available as commands in `nix develop`
-- **Tab Completion**: Rich completion for tasks and options
+- **Shell Integration**: `nix-tasks shell` and `nix develop` enter the configured dev shells
+- **Tab Completion**: bash, zsh and fish completion for commands, tasks and shells
 - **Clear Error Messages**: Context-aware output based on environment
 
 ### Build System Features
@@ -185,10 +181,10 @@ devShells.default = { extends = "ci"; packages = ["kubectl" "jq"]; };
 6. **Builder Library**: Helper functions for common task patterns
 
 ### Technical Stack
-- **Language**: Likely Rust or Go for CLI/runner performance
+- **Language**: Go
 - **Nix Integration**: Heavy use of Nix evaluation and store
-- **Caching Backend**: Local + remote (Cachix/S3)
-- **TUI Framework**: bubbletea (Go) or ratatui (Rust)
+- **Caching Backend**: Local task cache; Nix store and binary caches for derivations
+- **TUI Framework**: bubbletea
 
 ### Success Criteria
 - Faster than Make for incremental builds (via caching)

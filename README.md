@@ -340,23 +340,23 @@ $ nix-tasks shell ci --command "go version"
 
 ### Caching
 
-nix-tasks caches task results based on:
+nix-tasks caches build tasks, and shell tasks that declare `inputs`, based on:
 - Task commands and configuration
 - Package store paths (Nix handles this)
-- Input file contents (when `inputs` is specified)
+- Input file contents
 
 ```bash
 # First run executes the task
-$ nix-tasks run build
-✓ build (3.2s)
+$ nix-tasks run lint
+✓ lint (3.2s)
 
 # Second run uses cache
-$ nix-tasks run build
-✓ build (cached)
+$ nix-tasks run lint
+✓ lint (cached)
 
-# Force rebuild
-$ nix-tasks run build --force
-✓ build (3.1s)
+# Force re-run
+$ nix-tasks run lint --force
+✓ lint (3.1s)
 
 # Clear cache for this project
 $ nix-tasks cache clean
@@ -440,7 +440,7 @@ tasks.post-build-hook = lib.mkTask {
 
 When you run `nix-tasks run build`, both `build` and `post-build-hook` will execute, in that order. After-hooks chain transitively — if another task hooks onto `post-build-hook`, it will also be included.
 
-#### Task with inputs/outputs (for caching)
+#### Task with inputs (for caching)
 
 ```nix
 tasks.build = lib.mkTask {
@@ -448,7 +448,6 @@ tasks.build = lib.mkTask {
   deps = [ "go" ];
   commands = [ "go build -o bin/app ./..." ];
   inputs = [ "**/*.go" "go.mod" "go.sum" ];
-  outputs = [ "bin/app" ];
 };
 ```
 
@@ -461,8 +460,9 @@ nix-tasks provides helper builders for common task types:
 ```nix
 tasks.build = lib.mkGoTask {
   description = "Build Go application";
-  output = "bin/myapp";
-  # Automatically adds "go" to deps and generates go build command
+  pname = "myapp";
+  src = ./.;
+  vendorHash = null;
 };
 ```
 
@@ -624,15 +624,6 @@ See the [examples](./examples) directory:
 - **[demo](./examples/demo)** - Full example with 16 tasks, dependencies, and multiple dev shells
 - **[company-standards](./examples/company-standards)** - Company-wide standards flake template
 - **[app-using-standards](./examples/app-using-standards)** - Repository extending company standards
-
-## Roadmap
-
-- [x] **Phase 1:** Core task runner (list, run, describe, validate)
-- [x] **Phase 2:** Task dependencies with parallel execution
-- [x] **Phase 3:** Dev shell inheritance
-- [x] **Phase 4:** Task caching
-- [x] **Phase 5:** Interactive TUI and shell completions
-- [ ] **Phase 6:** Organization-wide task sharing
 
 ## Development
 

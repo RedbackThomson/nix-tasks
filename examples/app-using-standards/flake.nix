@@ -79,7 +79,6 @@
                   "       api/v1/*.proto"
                 ];
                 inputs = [ "api/**/*.proto" ];
-                outputs = [ "api/**/*.pb.go" ];
               };
 
               build-frontend = lib.mkTask {
@@ -89,7 +88,6 @@
                   "cd frontend && npm ci && npm run build"
                 ];
                 inputs = [ "frontend/**/*" ];
-                outputs = [ "frontend/dist/" ];
               };
 
               docker-build = lib.mkTask {
