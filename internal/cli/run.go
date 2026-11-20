@@ -121,7 +121,7 @@ func (c *RunCmd) run(globals *Globals, reporter ui.Reporter, warnings *warnings)
 	}
 	slog.Debug("task graph built")
 
-	store, err := c.openCache(ctx, globals, cfg, graph, warnings.add)
+	store, err := c.openCache(ctx, globals, cfg, graph, runWarner(reporter, warnings))
 	if err != nil {
 		return err
 	}
@@ -210,6 +210,19 @@ func (c *RunCmd) explain(globals *Globals, cfg *config.Config, results []runner.
 		disabled = "the flake is not a local path"
 	}
 	writeExplain(out, cfg, results, disabled)
+}
+
+// runWarner returns where warnings about the run as a whole go: the run's
+// warnings, which print them, and the reporter too when it shows them its own
+// way (GitHub annotations).
+func runWarner(reporter ui.Reporter, warnings *warnings) func(string) {
+	w, ok := reporter.(interface{ Warn(string) })
+	return func(msg string) {
+		warnings.add(msg)
+		if ok {
+			w.Warn(msg)
+		}
+	}
 }
 
 func warn(format string, args ...any) {

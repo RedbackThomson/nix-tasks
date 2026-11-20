@@ -7,6 +7,9 @@
 | {{cell .Name}} | {{.Result}} | {{if .Timed}}{{seconds .Duration}}{{else}}—{{end}} | {{cell .Notes}} |
 {{end}}
 {{range .Totals}}{{if eq .Kind "failed"}}**{{.Text}}**{{else}}{{.Text}}{{end}} · {{end}}{{seconds .Elapsed}} total
+{{if .Warnings}}
+{{range .Warnings}}- ⚠️ {{cell .}}
+{{end}}{{end -}}
 {{end}}
 
 {{- define "details"}}

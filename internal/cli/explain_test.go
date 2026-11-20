@@ -32,7 +32,7 @@ func TestWriteExplain(t *testing.T) {
 		{Name: "fresh", State: runner.Succeeded, Cache: &runner.CacheOutcome{
 			Miss: &cache.Explanation{NoPrevious: true},
 		}, Warnings: []string{"not cached: inputs changed while it ran: a"}},
-		{Name: "down", State: runner.Succeeded, Cache: &runner.CacheOutcome{Uncached: "depends on tools, not cached"}},
+		{Name: "down", State: runner.Succeeded, Cache: &runner.CacheOutcome{Uncached: "depends on uncached tools"}},
 		{Name: "bad", State: runner.Failed, Error: errors.New("x"), Cache: &runner.CacheOutcome{Forced: true}},
 		{Name: "later", State: runner.Skipped},
 	}
@@ -50,7 +50,7 @@ crds: miss — outputs changed since last run
     M package/crds/foo.yaml
 fresh: miss — no previous entry
   not stored: inputs changed while it ran: a
-down: not cached — depends on tools, not cached
+down: not cached — depends on uncached tools
 bad: forced by --force
   not stored: task failed
 later: not run (skipped)

@@ -77,6 +77,7 @@ func githubScenario(t *testing.T, g *GitHubReporter, clock *fakeClock) []runner.
 	at := func(d time.Duration) time.Time { return t0.Add(d) }
 
 	g.ConfigLoaded(1900 * time.Millisecond)
+	g.Warn("generate has cache enabled but always runs: it depends on tools, which is not cached")
 	g.RunPlanned(runner.RunPlan{
 		Targets: []string{"deploy"},
 		Tasks:   []string{"generate", crds, "lint", "vet", "fmt-check", "build", "deploy"},
@@ -91,7 +92,7 @@ func githubScenario(t *testing.T, g *GitHubReporter, clock *fakeClock) []runner.
 		{Tasks: []string{crds, "fmt-check"}, Duration: 2600 * time.Millisecond},
 	}, 2900*time.Millisecond)
 
-	vet := runner.TaskResult{Name: "vet", State: runner.Succeeded, Cached: true}
+	vet := runner.TaskResult{Name: "vet", State: runner.Succeeded, Cached: true, Saved: 18200 * time.Millisecond}
 	g.TaskFinished(vet)
 	g.TaskStarted("generate")
 	g.TaskStarted("lint")
@@ -103,7 +104,8 @@ func githubScenario(t *testing.T, g *GitHubReporter, clock *fakeClock) []runner.
 	write(t, g, crds, "package/crds/ec2.yaml\n", "")
 	lint := runner.TaskResult{Name: "lint", State: runner.Failed, Error: exitError(t, 1), Start: at(0), Duration: 3100 * time.Millisecond}
 	g.TaskFinished(lint)
-	gen := runner.TaskResult{Name: "generate", State: runner.Succeeded, Start: at(0), Duration: 12400 * time.Millisecond}
+	gen := runner.TaskResult{Name: "generate", State: runner.Succeeded, Start: at(0), Duration: 12400 * time.Millisecond,
+		Cache: &runner.CacheOutcome{Uncached: "depends on uncached tools"}}
 	g.TaskFinished(gen)
 	crdsResult := runner.TaskResult{Name: crds, State: runner.Succeeded, Start: at(0), Duration: 13 * time.Second}
 	g.TaskFinished(crdsResult)
@@ -113,7 +115,8 @@ func githubScenario(t *testing.T, g *GitHubReporter, clock *fakeClock) []runner.
 	g.TaskFinished(fmtCheck)
 	g.TaskStarted("build")
 	write(t, g, "build", "go build ./...\n", "")
-	build := runner.TaskResult{Name: "build", State: runner.Succeeded, Start: at(14 * time.Second), Duration: 41 * time.Second}
+	build := runner.TaskResult{Name: "build", State: runner.Succeeded, Start: at(14 * time.Second), Duration: 41 * time.Second,
+		Warnings: []string{"not cached: inputs changed while it ran: go.sum"}}
 	g.TaskFinished(build)
 	deploy := runner.TaskResult{Name: "deploy", State: runner.Skipped, SkipReason: "lint failed"}
 	g.TaskFinished(deploy)
@@ -276,7 +279,7 @@ func TestAnnotations_Limit(t *testing.T) {
 	for i := range 3 {
 		results = append(results, runner.TaskResult{Name: fmt.Sprintf("w%d", i), State: runner.FailedAllowed, Error: exitError(t, 1), Duration: time.Second})
 	}
-	got := annotations(results)
+	got := annotations(nil, results)
 	if len(got) != 13 {
 		t.Fatalf("expected 10 errors and 3 warnings, got %d:\n%s", len(got), strings.Join(got, "\n"))
 	}
@@ -294,9 +297,24 @@ func TestAnnotations_Limit(t *testing.T) {
 	for i := range 11 {
 		warns = append(warns, runner.TaskResult{Name: fmt.Sprintf("w%02d", i), State: runner.FailedAllowed, Error: exitError(t, 1)})
 	}
-	got = annotations(warns)
-	if want := "::warning title=nix-tasks%3A more allowed failures::…and 2 more allowed failures; see the job summary"; len(got) != 10 || got[9] != want {
+	got = annotations(nil, warns)
+	if want := "::warning title=nix-tasks%3A more warnings::…and 2 more warnings; see the job summary"; len(got) != 10 || got[9] != want {
 		t.Errorf("got %d warnings, last %q", len(got), got[len(got)-1])
+	}
+}
+
+func TestAnnotations_CacheWarningsComeFirst(t *testing.T) {
+	results := []runner.TaskResult{
+		{Name: "lint", State: runner.FailedAllowed, Error: exitError(t, 1), Duration: time.Second},
+		{Name: "gen", State: runner.Succeeded, Warnings: []string{"not cached: inputs changed while it ran: a.go"}},
+	}
+	got := annotations([]string{"gen has cache enabled but always runs: it depends on tools, which is not cached"}, results)
+	want := []string{
+		"::warning title=nix-tasks::gen has cache enabled but always runs: it depends on tools, which is not cached",
+		"::warning title=nix-tasks%3A gen::not cached: inputs changed while it ran: a.go",
+	}
+	if len(got) != 3 || got[0] != want[0] || got[1] != want[1] || !strings.Contains(got[2], "lint failed (allowed)") {
+		t.Errorf("got:\n%s", strings.Join(got, "\n"))
 	}
 }
 

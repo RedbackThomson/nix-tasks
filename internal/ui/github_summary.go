@@ -35,7 +35,7 @@ func (g *GitHubReporter) writeJobSummary(results []runner.TaskResult, elapsed ti
 			details = append(details, g.summaryDetails(r))
 		}
 	}
-	md := fitSummary(summaryTable(strings.Join(g.plan.Targets, " "), results, elapsed), details, limit)
+	md := fitSummary(summaryTable(strings.Join(g.plan.Targets, " "), results, g.warnings, elapsed), details, limit)
 
 	f, err := os.OpenFile(g.opts.SummaryPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -84,6 +84,7 @@ type summaryTableData struct {
 	Rows           []summaryRow
 	Totals         []summaryCount
 	Elapsed        time.Duration
+	Warnings       []string
 }
 
 type summaryDetailsData struct {
@@ -92,16 +93,19 @@ type summaryDetailsData struct {
 	Shown                     int
 }
 
-func summaryTable(target string, results []runner.TaskResult, elapsed time.Duration) string {
+func summaryTable(target string, results []runner.TaskResult, warnings []string, elapsed time.Duration) string {
 	c := countResults(results)
 	rows := make([]summaryRow, 0, len(results))
 	for _, r := range results {
 		row := summaryRow{Name: r.Name, Duration: r.Duration, Timed: true}
 		switch {
 		case r.State == runner.Succeeded && r.Cached:
-			row.Result, row.Timed = "● cached", false
+			row.Result, row.Timed, row.Notes = "● cached", false, strings.TrimPrefix(savedSuffix(r, " "), " ")
 		case r.State == runner.Succeeded:
 			row.Result = "✓ passed"
+			if r.Cache != nil && r.Cache.Uncached != "" {
+				row.Notes = "not cached: " + r.Cache.Uncached
+			}
 		case r.State == runner.Failed:
 			row.Result, row.Notes = "✗ failed", failureNote(r)
 		case r.State == runner.FailedAllowed:
@@ -111,6 +115,9 @@ func summaryTable(target string, results []runner.TaskResult, elapsed time.Durat
 		default:
 			row.Result = "⏹ interrupted"
 		}
+		for _, w := range r.Warnings {
+			row.Notes = joinNote(row.Notes, w)
+		}
 		rows = append(rows, row)
 	}
 	var totals []summaryCount
@@ -118,7 +125,14 @@ func summaryTable(target string, results []runner.TaskResult, elapsed time.Durat
 		totals = append(totals, summaryCount{kind, s})
 		return s
 	})
-	return renderSummary("table", summaryTableData{target, c.marker(), rows, totals, elapsed})
+	return renderSummary("table", summaryTableData{target, c.marker(), rows, totals, elapsed, warnings})
+}
+
+func joinNote(a, b string) string {
+	if a == "" {
+		return b
+	}
+	return a + "; " + b
 }
 
 func failureNote(r runner.TaskResult) string {

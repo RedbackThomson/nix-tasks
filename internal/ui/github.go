@@ -59,6 +59,7 @@ type GitHubReporter struct {
 	tasks          map[string]*githubTask
 	masks          []string
 	buf            []byte
+	warnings       []string
 
 	// stopToken is set while a task's ::stop-commands:: block is open, when
 	// GitHub ignores every command until ::<stopToken>::.
@@ -258,6 +259,15 @@ func (g *GitHubReporter) ConfigLoaded(d time.Duration) {
 	g.configDuration = d
 }
 
+// Warn records a problem with the run as a whole, such as a cached task that
+// can never hit, to raise as an annotation and list in the job summary. The
+// caller prints it in the log.
+func (g *GitHubReporter) Warn(msg string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.warnings = append(g.warnings, msg)
+}
+
 func (g *GitHubReporter) RunPlanned(plan runner.RunPlan) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -366,7 +376,7 @@ func (g *GitHubReporter) TaskFinished(r runner.TaskResult) {
 	var style, text string
 	switch {
 	case r.State == runner.Succeeded && r.Cached:
-		style, text = "1;"+AccentColor.sgr(), "● "+r.Name+" cached"
+		style, text = "1;"+AccentColor.sgr(), "● "+r.Name+" cached"+savedSuffix(r, " · ")
 	case r.State == runner.Succeeded:
 		style, text = "1;"+SuccessColor.sgr(), "✓ "+r.Name+" · "+formatSeconds(r.Duration, false)
 	case r.State == runner.Failed:
@@ -401,14 +411,17 @@ func (g *GitHubReporter) Summary(_ *runner.TaskGraph, _ []string, results []runn
 	rule := strings.Repeat("━", 26)
 	b.WriteString("\n" + rule + " Results " + rule + "\n")
 	for _, r := range results {
-		if !failed(r) {
+		if failed(r) {
+			g.writeResultGroup(&b, r)
+		} else {
 			b.WriteString(resultLine(r) + "\n")
-			continue
 		}
-		g.writeResultGroup(&b, r)
+		for _, w := range r.Warnings {
+			b.WriteString("  " + Warning("warning:") + " " + w + "\n")
+		}
 	}
 	b.WriteString("\n" + totalsLine(results, elapsed) + "\n")
-	for _, a := range annotations(results) {
+	for _, a := range annotations(g.warnings, results) {
 		b.WriteString(a + "\n")
 	}
 	_, _ = io.WriteString(g.opts.Out, b.String())
@@ -500,7 +513,7 @@ func (g *GitHubReporter) writeLocked(lines ...string) {
 func resultLine(r runner.TaskResult) string {
 	switch {
 	case r.State == runner.Succeeded && r.Cached:
-		return Accent("●") + " " + r.Name + " · cached"
+		return Accent("●") + " " + r.Name + " · cached" + savedSuffix(r, " · ")
 	case r.State == runner.Succeeded:
 		return Success("✓") + " " + r.Name + " · " + formatSeconds(r.Duration, false)
 	case r.State == runner.Failed:
@@ -517,8 +530,19 @@ func resultLine(r runner.TaskResult) string {
 	return Muted("⏹") + " " + r.Name + " · interrupted · " + formatSeconds(r.Duration, false)
 }
 
+// savedSuffix is sep followed by "saved 18.2s" for a cache hit whose stored
+// run duration is known, or "".
+func savedSuffix(r runner.TaskResult, sep string) string {
+	if !r.Cached || r.Saved <= 0 {
+		return ""
+	}
+	return sep + "saved " + formatSeconds(r.Saved, false)
+}
+
 type runCounts struct {
 	failed, allowed, passed, cached, skipped, interrupted int
+	// saved is the time cache hits saved.
+	saved time.Duration
 }
 
 func countResults(results []runner.TaskResult) runCounts {
@@ -527,6 +551,7 @@ func countResults(results []runner.TaskResult) runCounts {
 		switch {
 		case r.State == runner.Succeeded && r.Cached:
 			c.cached++
+			c.saved += r.Saved
 		case r.State == runner.Succeeded:
 			c.passed++
 		case r.State == runner.Failed:
@@ -553,7 +578,11 @@ func (c runCounts) parts(style func(kind, s string) string) []string {
 	add("failed", c.failed, "failed", "failed")
 	add("allowed", c.allowed, "allowed failure", "allowed failures")
 	add("passed", c.passed, "passed", "passed")
-	add("cached", c.cached, "cached", "cached")
+	if c.cached > 0 && c.saved > 0 {
+		parts = append(parts, style("cached", fmt.Sprintf("%d cached (saved %s)", c.cached, formatSeconds(c.saved, false))))
+	} else {
+		add("cached", c.cached, "cached", "cached")
+	}
 	add("skipped", c.skipped, "skipped", "skipped")
 	add("interrupted", c.interrupted, "interrupted", "interrupted")
 	return parts
@@ -596,10 +625,18 @@ func totalsLine(results []runner.TaskResult, elapsed time.Duration) string {
 const maxAnnotations = 10
 
 // annotations returns an ::error for each failed task and a ::warning for
-// each allowed failure. Past GitHub's limit, the last one of each level
-// counts the rest instead.
-func annotations(results []runner.TaskResult) []string {
+// each run warning, task warning and allowed failure. Past GitHub's limit,
+// the last one of each level counts the rest instead.
+func annotations(runWarnings []string, results []runner.TaskResult) []string {
 	var errs, warns []string
+	for _, w := range runWarnings {
+		warns = append(warns, workflowCommand("warning", "nix-tasks", w))
+	}
+	for _, r := range results {
+		for _, w := range r.Warnings {
+			warns = append(warns, workflowCommand("warning", "nix-tasks: "+r.Name, w))
+		}
+	}
 	for _, r := range results {
 		switch r.State {
 		case runner.Failed:
@@ -615,8 +652,8 @@ func annotations(results []runner.TaskResult) []string {
 			fmt.Sprintf("…and %d more failed tasks; see the job summary", n-maxAnnotations+1)))
 	}
 	if n := len(warns); n > maxAnnotations {
-		warns = append(warns[:maxAnnotations-1], workflowCommand("warning", "nix-tasks: more allowed failures",
-			fmt.Sprintf("…and %d more allowed failures; see the job summary", n-maxAnnotations+1)))
+		warns = append(warns[:maxAnnotations-1], workflowCommand("warning", "nix-tasks: more warnings",
+			fmt.Sprintf("…and %d more warnings; see the job summary", n-maxAnnotations+1)))
 	}
 	return append(errs, warns...)
 }

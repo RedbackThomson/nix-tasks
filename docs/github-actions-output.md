@@ -126,7 +126,7 @@ generate │ wrote package/crds/example.io_widgets.yaml
 |-------|--------|--------|
 | started | `▶ name` | dim, in the task's prefix colour |
 | Succeeded | `✓` | bold green |
-| Succeeded (cache hit) | `●` with time saved | bold blue |
+| Succeeded (cache hit) | `●` with the time saved (the duration of the run that stored the entry) | bold blue |
 | Failed | `✗` with exit code | bold red |
 | FailedAllowed | `!` with exit code | bold yellow |
 | Skipped | `-` with reason | grey |
@@ -178,7 +178,7 @@ after another, so groups never interleave.
 ::endgroup::
 - deploy · skipped (lint failed)
 
-✗ 1 failed · 1 allowed failure · 2 passed · 1 cached · 1 skipped · 56.2s
+✗ 1 failed · 1 allowed failure · 2 passed · 1 cached (saved 18.2s) · 1 skipped · 56.2s
 ```
 
 Collapsed, the section reads as a status list; expanding a row shows that
@@ -213,7 +213,7 @@ on the workflow run's summary page.
 | fmt-check | ! failed (allowed) | 0.4s | exit 1 |
 | deploy | - skipped | — | lint failed |
 
-**1 failed** · 1 allowed failure · 2 passed · 1 cached · 1 skipped · 56.2s total
+**1 failed** · 1 allowed failure · 2 passed · 1 cached (saved 18.2s) · 1 skipped · 56.2s total
 
 <details><summary>✗ lint, last 50 lines</summary>
 
@@ -249,11 +249,30 @@ in nix-tasks' budget, but GitHub's limit covers every annotation in the step. A
 step whose tools already emitted 10 errors shows none of nix-tasks' own; the
 failures are still in the Results section and the job summary.
 
+### Cache warnings
+
+Warnings from the [task cache](./cache-redesign.md) become warning
+annotations too, ahead of allowed failures, and share their limit of 10 (the
+tenth then says `…and N more warnings`):
+
+- Warnings about the run as a whole, raised before any task starts, such as a
+  cached task that can never hit:
+  `::warning title=nix-tasks::generate has cache enabled but always runs: it depends on tools, which is not cached`.
+  They are also printed when they happen, as `nix-tasks: warning: …` on
+  stderr, and listed under the job summary's totals line.
+- Warnings attached to a task's result, such as a run that was not stored
+  because its inputs changed while it ran:
+  `::warning title=nix-tasks: build::not cached: inputs changed while it ran: go.sum`.
+  They are printed indented under the task's line in the Results section and
+  added to its Notes cell in the job summary.
+
+A cached task that ran without the cache gets the reason in its Notes cell,
+for example `not cached: depends on uncached tools`.
+
 ## Implementation notes
 
 Where the implementation differs from the sketches above:
 
-- Cache hits show `● vet cached` with no time saved.
 - Interrupted tasks (the first failure stops the run without
   `--continue-on-error`) get `⏹ name interrupted · 2.0s` banners and Results
   lines, and an `interrupted` count in the totals. They raise no annotation.
