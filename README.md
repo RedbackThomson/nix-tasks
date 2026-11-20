@@ -298,7 +298,7 @@ nix-tasks  Tasks (3)  Dev Shells (2)
                                           │ Commands
                                           │   go build -o bin/app ./cmd/app
 ✓ build passed · 2.3s
-enter run · / filter · g graph · tab shells · ? help · q quit
+enter run · space mark · / filter · g graph · tab shells · ? help · q quit
 ```
 
 The UI appears straight away and evaluates the flake in the background; if
@@ -313,6 +313,10 @@ shell it shows its packages, the packages it inherits, its full `extends`
 chain and its env. `/` filters the list by name or description as you type
 (`enter` keeps the filter, `esc` clears it). `g` shows the selected task's
 dependency graph, the same tree as `nix-tasks graph`; `esc` returns.
+
+`space` marks tasks (shown with `●`); while any are marked, `enter` runs them
+all in one `nix-tasks run a b c`. Marks stay after the run so you can repeat
+it, and `esc` clears them (after clearing the filter, if one is set).
 
 `enter` on a task hands the terminal to `nix-tasks run <task>`, so the run
 shows its usual progress output; when it finishes, press any key to return.

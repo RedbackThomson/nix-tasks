@@ -61,6 +61,9 @@ type Model struct {
 	filter    string
 	filtering bool
 
+	// marked holds the tasks enter runs together.
+	marked map[string]bool
+
 	showHelp bool
 	status   string
 
@@ -84,7 +87,7 @@ const spinnerInterval = 100 * time.Millisecond
 
 // New returns a model that starts loading the configuration when it runs.
 func New(opts Options) Model {
-	return Model{opts: opts, loading: true}
+	return Model{opts: opts, loading: true, marked: map[string]bool{}}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -187,7 +190,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		m.filtering = true
 	case "esc":
-		m.setFilter("")
+		if m.filter != "" {
+			m.setFilter("")
+		} else {
+			clear(m.marked)
+		}
+	case "space":
+		m.toggleMark()
 	case "g":
 		m.openGraph()
 	case "up", "k":
@@ -342,15 +351,53 @@ func (m *Model) switchMode() {
 	m.filtering = false
 }
 
-func (m Model) runSelected() tea.Cmd {
+func (m *Model) toggleMark() {
 	name, ok := m.selected()
-	if !ok {
+	if m.mode != TaskMode || !ok {
+		return
+	}
+	if m.marked[name] {
+		delete(m.marked, name)
+	} else {
+		m.marked[name] = true
+	}
+	m.moveCursor(1)
+}
+
+// markedTasks returns the marked tasks in list order.
+func (m Model) markedTasks() []string {
+	var names []string
+	for _, name := range m.tasks {
+		if m.marked[name] {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// runSelected runs the marked tasks, or else the selected one, or enters the
+// selected dev shell.
+func (m Model) runSelected() tea.Cmd {
+	if m.mode == ShellMode {
+		if name, ok := m.selected(); ok {
+			return m.enterShell(name)
+		}
 		return nil
 	}
-	if m.mode == ShellMode {
-		return m.enterShell(name)
+	if names := m.tasksToRun(); len(names) > 0 {
+		return m.runTasks(names)
 	}
-	return m.runTasks([]string{name})
+	return nil
+}
+
+func (m Model) tasksToRun() []string {
+	if marked := m.markedTasks(); len(marked) > 0 {
+		return marked
+	}
+	if name, ok := m.selected(); ok {
+		return []string{name}
+	}
+	return nil
 }
 
 func (m Model) View() tea.View {
