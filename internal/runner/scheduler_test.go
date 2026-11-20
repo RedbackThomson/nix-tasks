@@ -62,11 +62,7 @@ func (f *fakeNix) BuildCmd(ctx context.Context, _ string) *exec.Cmd {
 
 // sh returns a task that runs script; scripts run in the test's temp dir.
 func sh(script string, depends ...string) config.Task {
-	var deps []string
-	for _, d := range depends {
-		deps = append(deps, d)
-	}
-	return config.Task{Script: script, Depends: deps}
+	return config.Task{Script: script, Depends: append([]string(nil), depends...)}
 }
 
 // logged returns a task that appends its name to ran.log.
