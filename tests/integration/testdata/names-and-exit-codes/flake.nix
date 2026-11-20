@@ -7,39 +7,35 @@
   };
 
   outputs = { self, nixpkgs, nix-tasks }:
-    let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-
-      mkConfig = system:
-        let
-          lib = nix-tasks.lib.${system};
-        in lib.evalConfig {
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit nixpkgs;
+      modules = [
+        ({ tasksLib, ... }: {
           packages = {};
 
           tasks = {
-            "lint.go" = lib.mkTask {
+            "lint.go" = tasksLib.mkTask {
               description = "Task whose name contains a dot";
               commands = [ "echo 'linted go'" ];
             };
 
-            exit-four = lib.mkTask {
+            exit-four = tasksLib.mkTask {
               description = "Fails with exit code 4";
               commands = [ "exit 4" ];
             };
 
-            exit-five = lib.mkTask {
+            exit-five = tasksLib.mkTask {
               description = "Fails with exit code 5";
               commands = [ "exit 5" ];
             };
 
-            after-exit-four = lib.mkTask {
+            after-exit-four = tasksLib.mkTask {
               description = "Depends on a task that exits 4";
               depends = [ "task:exit-four" ];
               commands = [ "echo unreachable" ];
             };
 
-            both-fail = lib.mkTask {
+            both-fail = tasksLib.mkTask {
               description = "Depends on two failing tasks";
               depends = [ "task:exit-four" "task:exit-five" ];
               commands = [ "echo unreachable" ];
@@ -55,11 +51,7 @@
               env = { SHELL_NAME = "ci.full"; };
             };
           };
-        };
-    in {
-      nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
-      nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
-      devShells = forAllSystems (system: (mkConfig system).devShells);
+        })
+      ];
     };
 }

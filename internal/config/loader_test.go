@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -56,14 +57,28 @@ func TestLoad(t *testing.T) {
 		{
 			name: "per-system config",
 			eval: &fakeEvaluator{values: map[string]string{
-				sys: `{"packages":{},"tasks":{"hello":{"type":"shell","commands":["echo hi"],"env":{"PORT":"8080"}}},"devShells":{}}`,
+				sys: `{"packages":["go"],"tasks":{"hello":{"type":"shell","deps":["go"],"commands":["echo hi"],"env":{"PORT":"8080"},"shellDrvPath":"/nix/store/x-nix-shell.drv"}},"devShells":{}}`,
 			}},
 			wantCalls: 1,
 			check: func(t *testing.T, cfg *config.Config) {
 				if got := cfg.Tasks["hello"].Env["PORT"]; got != "8080" {
 					t.Errorf("env PORT = %q, want 8080", got)
 				}
+				if got := cfg.Tasks["hello"].ShellDrvPath; got != "/nix/store/x-nix-shell.drv" {
+					t.Errorf("shellDrvPath = %q", got)
+				}
+				if !slices.Equal(cfg.Packages, []string{"go"}) {
+					t.Errorf("packages = %v, want [go]", cfg.Packages)
+				}
 			},
+		},
+		{
+			name: "packages as store-path map is rejected with a hint",
+			eval: &fakeEvaluator{values: map[string]string{
+				sys: `{"packages":{"go":"/nix/store/abc-go"},"tasks":{}}`,
+			}},
+			wantErr:   "expected a list of package names",
+			wantCalls: 1,
 		},
 		{
 			name: "falls back when per-system attribute is missing",

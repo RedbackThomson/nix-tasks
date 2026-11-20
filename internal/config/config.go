@@ -5,9 +5,11 @@ const TaskDependencyPrefix = "task:"
 
 // Config is the root configuration structure
 type Config struct {
-	Packages  map[string]string `json:"packages"`
-	Tasks     map[string]Task   `json:"tasks"`
-	DevShells map[string]Shell  `json:"devShells"`
+	// Packages holds package names only: resolving store paths would force
+	// every package to be evaluated whenever the config is loaded.
+	Packages  []string         `json:"packages"`
+	Tasks     map[string]Task  `json:"tasks"`
+	DevShells map[string]Shell `json:"devShells"`
 }
 
 // TaskType represents the execution type of a task
@@ -39,6 +41,10 @@ type Task struct {
 
 	// Input tracking for cache fingerprinting
 	Inputs []string `json:"inputs,omitempty"`
+
+	// ShellDrvPath identifies the exact toolchain of the task's shell. Only
+	// set for cacheable tasks, so loading the config stays cheap.
+	ShellDrvPath string `json:"shellDrvPath,omitempty"`
 
 	// Error handling
 	ContinueOnError bool `json:"continueOnError,omitempty"`

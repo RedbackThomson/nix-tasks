@@ -7,32 +7,27 @@
   };
 
   outputs = { self, nixpkgs, nix-tasks }:
-    let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-
-      mkConfig = system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          lib = nix-tasks.lib.${system};
-        in lib.evalConfig {
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit nixpkgs;
+      modules = [
+        ({ tasksLib, ... }: {
           packages = {};
 
           tasks = {
             # Circular dependency: a -> b -> c -> a
-            task-a = lib.mkTask {
+            task-a = tasksLib.mkTask {
               description = "Task A";
               depends = [ "task:task-c" ];
               commands = [ "echo 'A'" ];
             };
 
-            task-b = lib.mkTask {
+            task-b = tasksLib.mkTask {
               description = "Task B";
               depends = [ "task:task-a" ];
               commands = [ "echo 'B'" ];
             };
 
-            task-c = lib.mkTask {
+            task-c = tasksLib.mkTask {
               description = "Task C";
               depends = [ "task:task-b" ];
               commands = [ "echo 'C'" ];
@@ -44,11 +39,7 @@
               packages = [];
             };
           };
-        };
-    in {
-      nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
-      nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
-      devShells = forAllSystems (system: (mkConfig system).devShells);
+        })
+      ];
     };
 }

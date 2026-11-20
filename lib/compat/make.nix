@@ -3,45 +3,34 @@
 # This module provides helpers for wrapping Make targets as nix-tasks tasks,
 # enabling gradual migration from Makefiles to nix-tasks.
 #
-# Usage:
+# Usage, in a module that receives `tasksLib`:
 #   tasks = {
-#     # Wrap a single Make target
-#     legacy-build = compat.mkMakeTask {
+#     legacy-build = tasksLib.compat.make.mkMakeTask {
 #       target = "build";
 #       description = "Run legacy Make build";
 #     };
-#
-#     # Wrap with custom makefile
-#     legacy-test = compat.mkMakeTask {
-#       target = "test";
-#       makefile = "Makefile.test";
-#       description = "Run legacy Make tests";
-#     };
-#
-#     # Import multiple targets at once
-#   } // compat.importMakeTargets {
+#   } // tasksLib.compat.make.importMakeTargets {
 #     targets = [ "clean" "install" "dist" ];
 #     prefix = "make";  # Creates make-clean, make-install, make-dist
 #   };
 #
-{ lib, pkgs, builders }:
+{ lib }:
 rec {
   # Wrap a single Make target as a nix-tasks task
   #
   # Arguments:
   #   target      - The Make target to run
   #   makefile    - Path to Makefile (default: "Makefile")
-  #   description - Task description (auto-generated if not provided)
+  #   description - Task description (defaults to "Make target: <target>")
   #   makeFlags   - Additional arguments to pass to make, one per element
   #
   # Any other task field (deps, depends, env, workingDir, ...) is passed
-  # through to mkTask. make comes from stdenv, so it needs no package entry.
+  # through as a task field. make comes from stdenv, so it needs no package entry.
   #
   # Returns a task definition
   mkMakeTask = {
     target,
     makefile ? "Makefile",
-    description ? null,
     makeFlags ? [],
     ...
   }@args:
@@ -50,22 +39,18 @@ rec {
         ++ lib.optionals (makefile != "Makefile") [ "-f" makefile ]
         ++ makeFlags
         ++ [ target ];
-    in builders.mkTask ((builtins.removeAttrs args [ "target" "makefile" "makeFlags" ]) // {
-      description = if description != null then description else "Make target: ${target}";
+    in (builtins.removeAttrs args [ "target" "makefile" "makeFlags" ]) // {
+      description = args.description or (lib.mkDefault "Make target: ${target}");
       commands = [ (lib.escapeShellArgs makeArgs) ];
-    });
+    };
 
   # Import multiple Make targets as nix-tasks tasks
   #
   # Arguments:
   #   targets     - List of Make targets to import
   #   prefix      - Prefix for task names (default: "make")
-  #   makefile    - Path to Makefile (default: "Makefile")
-  #   makeFlags   - Additional arguments to pass to make
-  #   deps        - Additional package dependencies (applied to all)
-  #   depends     - Task dependencies (applied to all)
-  #   env         - Environment variables (applied to all)
-  #   workingDir  - Working directory for make (applied to all)
+  #   Any other argument (makefile, makeFlags, deps, env, workingDir, ...)
+  #   is passed to mkMakeTask for every target.
   #
   # Returns an attribute set of tasks
   #
@@ -79,17 +64,10 @@ rec {
   importMakeTargets = {
     targets,
     prefix ? "make",
-    makefile ? "Makefile",
-    makeFlags ? [],
-    deps ? [],
-    depends ? [],
-    env ? {},
-    workingDir ? null,
-  }:
+    ...
+  }@args:
     builtins.listToAttrs (map (target: {
       name = "${prefix}-${target}";
-      value = mkMakeTask {
-        inherit target makefile makeFlags deps depends env workingDir;
-      };
+      value = mkMakeTask (builtins.removeAttrs args [ "targets" "prefix" ] // { inherit target; });
     }) targets);
 }

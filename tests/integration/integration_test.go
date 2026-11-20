@@ -1112,13 +1112,13 @@ func TestMkGoTask_BuildsBinaryToCorrectLocation(t *testing.T) {
 }
 
 // =============================================================================
-// Task Modifier Tests
+// Module Composition Tests
 // =============================================================================
 
 func TestRun_ModifiedCompoundTask(t *testing.T) {
 	skipIfNoNix(t)
 	binary := nixTasksBinary(t)
-	flakePath := filepath.Join(testdataDir(t), "modifiers")
+	flakePath := filepath.Join(testdataDir(t), "composition")
 
 	stdout, stderr, err := runNixTasks(t, binary, "run", "publish", "-f", flakePath, "-v")
 	if err != nil {
@@ -1138,7 +1138,7 @@ func TestRun_ModifiedCompoundTask(t *testing.T) {
 func TestRun_AppendedTaskDeps(t *testing.T) {
 	skipIfNoNix(t)
 	binary := nixTasksBinary(t)
-	flakePath := filepath.Join(testdataDir(t), "modifiers")
+	flakePath := filepath.Join(testdataDir(t), "composition")
 
 	stdout, stderr, err := runNixTasks(t, binary, "run", "publish-with-cleanup", "-f", flakePath, "-v")
 	if err != nil {
@@ -1153,7 +1153,7 @@ func TestRun_AppendedTaskDeps(t *testing.T) {
 func TestRun_PipedModifications(t *testing.T) {
 	skipIfNoNix(t)
 	binary := nixTasksBinary(t)
-	flakePath := filepath.Join(testdataDir(t), "modifiers")
+	flakePath := filepath.Join(testdataDir(t), "composition")
 
 	stdout, stderr, err := runNixTasks(t, binary, "run", "build", "-f", flakePath, "-v")
 	if err != nil {
@@ -1169,7 +1169,7 @@ func TestRun_PipedModifications(t *testing.T) {
 func TestDescribe_ModifiedCompoundTask(t *testing.T) {
 	skipIfNoNix(t)
 	binary := nixTasksBinary(t)
-	flakePath := filepath.Join(testdataDir(t), "modifiers")
+	flakePath := filepath.Join(testdataDir(t), "composition")
 
 	stdout, stderr, err := runNixTasks(t, binary, "describe", "publish", "-f", flakePath)
 	if err != nil {
@@ -1185,7 +1185,7 @@ func TestDescribe_ModifiedCompoundTask(t *testing.T) {
 func TestDescribe_PipedModifiedTask(t *testing.T) {
 	skipIfNoNix(t)
 	binary := nixTasksBinary(t)
-	flakePath := filepath.Join(testdataDir(t), "modifiers")
+	flakePath := filepath.Join(testdataDir(t), "composition")
 
 	stdout, stderr, err := runNixTasks(t, binary, "describe", "build", "-f", flakePath)
 	if err != nil {
@@ -1201,7 +1201,7 @@ func TestDescribe_PipedModifiedTask(t *testing.T) {
 func TestRun_ScriptWithPrependedAndAppendedCommands(t *testing.T) {
 	skipIfNoNix(t)
 	binary := nixTasksBinary(t)
-	flakePath := filepath.Join(testdataDir(t), "modifiers")
+	flakePath := filepath.Join(testdataDir(t), "composition")
 
 	stdout, stderr, err := runNixTasks(t, binary, "run", "script-modified", "-f", flakePath, "-v")
 	if err != nil {

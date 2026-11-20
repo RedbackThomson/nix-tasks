@@ -38,7 +38,7 @@ Adding or removing an entry from this list automatically updates every generated
 ```nix
 buildTasks = builtins.listToAttrs (map (svc: {
   name = "build-${svc.name}";
-  value = lib.mkTask {
+  value = tasksLib.mkTask {
     description = "Build ${svc.name}";
     deps = [ "go" ];
     depends = [ "task:generate-protos" ];
@@ -50,7 +50,7 @@ buildTasks = builtins.listToAttrs (map (svc: {
 ### Aggregate fan-in tasks
 
 ```nix
-build-all = lib.mkTask {
+build-all = tasksLib.mkTask {
   description = "Build all services";
   depends = map (svc: "task:build-${svc.name}") services;
   commands = [ "echo 'All services built.'" ];

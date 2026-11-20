@@ -7,66 +7,61 @@
   };
 
   outputs = { self, nixpkgs, nix-tasks }:
-    let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-
-      mkConfig = system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          lib = nix-tasks.lib.${system};
-        in lib.evalConfig {
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit nixpkgs;
+      modules = [
+        ({ tasksLib, ... }: {
           packages = {};
 
           tasks = {
             # Basic after-hook: hook runs after build
-            build = lib.mkTask {
+            build = tasksLib.mkTask {
               description = "Build the project";
               commands = [ "echo 'Building...'" ];
             };
 
-            post-build = lib.mkTask {
+            post-build = tasksLib.mkTask {
               description = "Post-build hook";
               after = [ "task:build" ];
               commands = [ "echo 'Post-build hook ran'" ];
             };
 
             # After-hook not triggered: unrelated task should not pull in hooks
-            unrelated = lib.mkTask {
+            unrelated = tasksLib.mkTask {
               description = "Unrelated task";
               commands = [ "echo 'Unrelated'" ];
             };
 
             # Transitive after-hooks: c hooks onto b, b hooks onto a
-            chain-a = lib.mkTask {
+            chain-a = tasksLib.mkTask {
               description = "Chain start";
               commands = [ "echo 'Chain A'" ];
             };
 
-            chain-b = lib.mkTask {
+            chain-b = tasksLib.mkTask {
               description = "Chain middle (hooks onto chain-a)";
               after = [ "task:chain-a" ];
               commands = [ "echo 'Chain B'" ];
             };
 
-            chain-c = lib.mkTask {
+            chain-c = tasksLib.mkTask {
               description = "Chain end (hooks onto chain-b)";
               after = [ "task:chain-b" ];
               commands = [ "echo 'Chain C'" ];
             };
 
             # After-hook with its own depends
-            setup = lib.mkTask {
+            setup = tasksLib.mkTask {
               description = "Setup task";
               commands = [ "echo 'Setup'" ];
             };
 
-            deploy = lib.mkTask {
+            deploy = tasksLib.mkTask {
               description = "Deploy task";
               commands = [ "echo 'Deploying...'" ];
             };
 
-            post-deploy = lib.mkTask {
+            post-deploy = tasksLib.mkTask {
               description = "Post-deploy hook with its own dependency";
               after = [ "task:deploy" ];
               depends = [ "task:setup" ];
@@ -74,18 +69,18 @@
             };
 
             # Multiple hooks on the same target
-            test = lib.mkTask {
+            test = tasksLib.mkTask {
               description = "Run tests";
               commands = [ "echo 'Testing...'" ];
             };
 
-            coverage-report = lib.mkTask {
+            coverage-report = tasksLib.mkTask {
               description = "Generate coverage report after tests";
               after = [ "task:test" ];
               commands = [ "echo 'Coverage report'" ];
             };
 
-            notify = lib.mkTask {
+            notify = tasksLib.mkTask {
               description = "Send notification after tests";
               after = [ "task:test" ];
               commands = [ "echo 'Notifying...'" ];
@@ -97,11 +92,7 @@
               packages = [];
             };
           };
-        };
-    in {
-      nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
-      nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
-      devShells = forAllSystems (system: (mkConfig system).devShells);
+        })
+      ];
     };
 }

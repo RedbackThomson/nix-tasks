@@ -11,12 +11,10 @@ Define tasks in Nix, run them with exact package versions, and share configurati
 **The solution:** Define tasks declaratively in Nix. Every task runs with pinned dependencies. Share task definitions across repositories.
 
 ```nix
-tasks = {
-  build = lib.mkTask {
-    description = "Build the application";
-    deps = [ "go" ];  # Uses exactly the Go version defined in packages
-    commands = [ "go build -o bin/app ./..." ];
-  };
+tasks.build = {
+  description = "Build the application";
+  deps = [ "go" ];  # Uses exactly the Go version defined in packages
+  commands = [ "go build -o bin/app ./..." ];
 };
 ```
 
@@ -53,16 +51,27 @@ In your `flake.nix`:
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-tasks.url = "github:redbackthomson/nix-tasks";
+    # Build tasks and shells with your nixpkgs, so task tools match the
+    # versions you declare in `packages`.
+    nix-tasks.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, nixpkgs, nix-tasks }:
-    # ... see Quick Start below
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit nixpkgs;
+      modules = [ ./nix-tasks.nix ];  # see Quick Start below
+    };
 }
 ```
 
 ## Quick Start
 
 ### 1. Create a flake.nix
+
+nix-tasks configuration is a [Nix module](https://nixos.org/manual/nixpkgs/stable/#module-system-introduction):
+an attribute set (or a function returning one) that sets the `packages`,
+`tasks` and `devShells` options. `mkFlakeOutputs` evaluates your modules for
+every system and returns the flake outputs the CLI reads.
 
 ```nix
 {
@@ -71,75 +80,69 @@ In your `flake.nix`:
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-tasks.url = "github:redbackthomson/nix-tasks";
+    nix-tasks.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, nixpkgs, nix-tasks }:
-    let
-      system = "aarch64-darwin";  # or x86_64-linux, etc.
-      pkgs = nixpkgs.legacyPackages.${system};
-      lib = nix-tasks.lib.${system};
-
-      config = lib.evalConfig {
-        # Define available packages
-        packages = {
-          go = pkgs.go;
-          nodejs = pkgs.nodejs;
-        };
-
-        # Define tasks
-        tasks = {
-          build = lib.mkTask {
-            description = "Build the application";
-            deps = [ "go" ];
-            commands = [
-              "go build -o bin/app ./cmd/app"
-            ];
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit nixpkgs;
+      modules = [
+        ({ pkgs, ... }: {
+          # Packages tasks and shells refer to by name
+          packages = {
+            go = pkgs.go;
+            nodejs = pkgs.nodejs;
+            # Optional: make the CLI available in dev shells
+            nix-tasks = nix-tasks.packages.${pkgs.stdenv.hostPlatform.system}.default;
           };
 
-          test = lib.mkTask {
-            description = "Run tests";
-            deps = [ "go" ];
-            commands = [ "go test ./..." ];
+          tasks = {
+            build = {
+              description = "Build the application";
+              deps = [ "go" ];
+              commands = [ "go build -o bin/app ./cmd/app" ];
+            };
+
+            test = {
+              description = "Run tests";
+              deps = [ "go" ];
+              commands = [ "go test ./..." ];
+            };
+
+            clean = {
+              description = "Clean build artifacts";
+              commands = [ "rm -rf bin/" ];
+            };
           };
 
-          clean = lib.mkTask {
-            description = "Clean build artifacts";
-            commands = [ "rm -rf bin/" ];
-          };
-        };
-
-        # Define dev shells
-        devShells = {
-          default = {
-            packages = [ "go" "nodejs" ];
+          devShells.default = {
+            packages = [ "go" "nodejs" "nix-tasks" ];
             shellHook = ''
               echo "Ready to develop!"
             '';
           };
-        };
-      };
-    in {
-      # Expose nix-tasks config
-      inherit (config) nixTasksConfig nixTasksShells nixTasksBuilds;
-
-      # Expose nix-tasks CLI as a package and app (optional but recommended)
-      packages.${system} = {
-        nix-tasks = nix-tasks.packages.${system}.default;
-        default = nix-tasks.packages.${system}.default;
-      };
-
-      apps.${system} = {
-        nix-tasks = nix-tasks.apps.${system}.default;
-        default = nix-tasks.apps.${system}.default;
-      };
-
-      # Expose dev shells with nix-tasks available
-      devShells.${system}.default = config.devShells.default.overrideAttrs (old: {
-        buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
-      });
+        })
+      ];
+    } // {
+      # Optional: `nix run . -- <command>`
+      inherit (nix-tasks) packages apps;
     };
 }
 ```
+
+`mkFlakeOutputs` takes:
+
+| Argument | Description |
+|----------|-------------|
+| `nixpkgs` | The nixpkgs flake used for `pkgs`, task shells and builders (required) |
+| `modules` | List of nix-tasks modules |
+| `systems` | Systems to generate outputs for (default: x86_64/aarch64 Linux and Darwin) |
+| `specialArgs` | Extra arguments passed to every module, e.g. `{ inherit inputs; }` |
+
+Modules receive `pkgs`, `lib` (nixpkgs' lib) and `tasksLib` (the nix-tasks
+builders, built with your `pkgs`). The flake outputs are `nixTasksConfig`,
+`nixTasksShells`, `nixTasksShellDrvs`, `nixTasksBuilds` (read by the CLI) and
+`devShells` (for `nix develop`), each per system.
 
 ### 2. List available tasks
 
@@ -159,10 +162,7 @@ Tasks:
 #### Option B: Using your project's exposed app (recommended)
 
 ```bash
-# Run via the nix-tasks package you exposed
-$ nix run .#nix-tasks -- list
-
-# Or use the default app (shorter)
+# Run via the app re-exported from nix-tasks
 $ nix run . -- list
 
 Tasks:
@@ -174,7 +174,7 @@ Tasks:
 #### Option C: In a development shell
 
 ```bash
-# Enter the dev shell (which includes nix-tasks)
+# Enter the dev shell (which includes the nix-tasks package)
 $ nix develop
 
 # Now run nix-tasks directly
@@ -381,7 +381,7 @@ command's) exit code, signals and job control behave exactly as with
 
 nix-tasks caches shell task results that declare `inputs`, based on:
 - Task commands and configuration
-- Package store paths (Nix handles this)
+- The task shell's derivation (changes whenever any of its packages does)
 - Input file contents
 
 Only successful runs are cached, so a failed task always runs again. Build
@@ -434,10 +434,35 @@ Task and dev shell names can contain any character except `"`, which `nix`
 cannot select in a flake attribute path; `nix-tasks` reports such names as
 configuration errors.
 
+Each entry in `tasks` is a typed submodule. Unknown fields and wrongly typed
+values (for example `env.PORT = 8080` instead of `"8080"`) are evaluation
+errors.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `description` | string | `""` | Shown by `list` and `describe` |
+| `type` | `"shell"` or `"build"` | `"shell"` | Shell tasks run commands; build tasks build `derivation` |
+| `deps` | list of package names | `[]` | Packages available to the task |
+| `depends` | list of `task:<name>` | `[]` | Tasks that must finish first |
+| `after` | list of `task:<name>` | `[]` | Run automatically after these tasks |
+| `commands` | list of strings | `[]` | Shell commands, run in order |
+| `script` | string or null | `null` | A bash script, instead of `commands` |
+| `env` | attrs of strings | `{}` | Environment variables |
+| `workingDir` | string or null | `null` | Directory, relative to the flake root |
+| `continueOnError` | bool | `false` | Don't fail the run when this task fails |
+| `inputs` | list of globs | `[]` | Files hashed into the cache fingerprint |
+| `noCache` | bool | `false` | Never cache this task |
+| `derivation` | package or null | `null` | What a build task builds |
+
+Evaluation fails with a message listing every problem when a task refers to an
+unknown task or package, depends on itself, sets both `commands` and
+`script`, or is a build task with `commands`, `script`, `inputs` or
+`workingDir` (none of which affect `nix build`).
+
 #### Basic task
 
 ```nix
-tasks.build = lib.mkTask {
+tasks.build = {
   description = "Build the app";
   deps = [ "go" ];           # Package dependencies
   commands = [
@@ -455,7 +480,7 @@ tests do. To tolerate a failing command, append `|| true` to it, or put
 #### Task with environment variables
 
 ```nix
-tasks.deploy = lib.mkTask {
+tasks.deploy = {
   description = "Deploy to staging";
   deps = [ "kubectl" ];
   commands = [ "kubectl apply -f deploy/" ];
@@ -469,7 +494,7 @@ tasks.deploy = lib.mkTask {
 #### Task with dependencies on other tasks
 
 ```nix
-tasks.deploy = lib.mkTask {
+tasks.deploy = {
   description = "Deploy (after build and test)";
   depends = [ "task:build" "task:test" ];
   commands = [ "kubectl apply -f deploy/" ];
@@ -480,11 +505,10 @@ tasks.deploy = lib.mkTask {
 
 Use `after` to run a task automatically whenever another task runs. This is the inverse of `depends` — instead of "I need X before me", it means "whenever X runs, also run me after it."
 
-This is especially useful when extending tasks from a shared flake, since you can hook onto an existing task without modifying its definition:
+This is especially useful when extending tasks from a shared module, since you can hook onto an existing task without modifying its definition:
 
 ```nix
-# In your repo's flake.nix, extending a shared "build" task:
-tasks.post-build-hook = lib.mkTask {
+tasks.post-build-hook = {
   description = "Generate manifests after build";
   after = [ "task:build" ];  # Runs automatically whenever "build" runs
   commands = [ "generate-manifests" ];
@@ -496,7 +520,7 @@ When you run `nix-tasks run build`, both `build` and `post-build-hook` will exec
 #### Task with inputs (for caching)
 
 ```nix
-tasks.build = lib.mkTask {
+tasks.build = {
   description = "Build the app";
   deps = [ "go" ];
   commands = [ "go build -o bin/app ./..." ];
@@ -506,12 +530,24 @@ tasks.build = lib.mkTask {
 
 ### Task Builders
 
-nix-tasks provides helper builders for common task types:
+Modules receive `tasksLib`, a set of builders for common task types. A builder
+returns only the fields you passed plus its own, so a builder used in one
+module combines with definitions of the same task in another. Values a
+builder makes up (such as a default description) are `lib.mkDefault`, so any
+plain definition replaces them.
+
+`tasksLib` is built from the `pkgs` of the module evaluation. Outside a module,
+use `nix-tasks.lib.mkLib pkgs` (or `nix-tasks.lib.<system>`, which uses
+nix-tasks' own nixpkgs).
+
+#### mkTask
+
+`mkTask` returns its argument unchanged; a plain attribute set works the same.
 
 #### mkGoTask
 
 ```nix
-tasks.build = lib.mkGoTask {
+tasks.build = tasksLib.mkGoTask {
   description = "Build Go application";
   pname = "myapp";
   src = ./.;
@@ -519,18 +555,20 @@ tasks.build = lib.mkGoTask {
 };
 ```
 
-`mkGoTask` creates a build task backed by `buildGoModule`. `src` is required.
-`env` is merged over the default `CGO_ENABLED = "0"`, and `continueOnError`
-applies as for shell tasks. Build tasks are
-exposed as the flake output `nixTasksBuilds.<system>.<task>`; `nix-tasks run`
-builds that attribute and links each derivation output into
-`.nix-tasks/<task>/<output>` (e.g. `.nix-tasks/build/out/bin/myapp`) in the
-flake's root directory.
+`mkGoTask` creates a build task backed by `buildGoModule`. `pname` and `src`
+are required; `version` defaults to `"0.1.0"`, `ldflags` and `tags` to `[]`.
+`env` is merged over the default `CGO_ENABLED = "0"` and set on the
+derivation. Task fields (`description`, `deps`, `depends`, `after`,
+`continueOnError`, `noCache`) are applied to the task; every other argument is
+passed to `buildGoModule`. Build tasks are exposed as the flake output
+`nixTasksBuilds.<system>.<task>`; `nix-tasks run` builds that attribute and
+links each derivation output into `.nix-tasks/<task>/<output>` (e.g.
+`.nix-tasks/build/out/bin/myapp`) in the flake's root directory.
 
 #### mkDockerTask
 
 ```nix
-tasks.docker = lib.mkDockerTask {
+tasks.docker = tasksLib.mkDockerTask {
   description = "Build Docker image";
   image = "myapp";
   tag = "latest";
@@ -538,73 +576,67 @@ tasks.docker = lib.mkDockerTask {
 };
 ```
 
+The generated `docker build` command is a default: setting `commands` here or
+in another module replaces it.
+
 #### mkCompoundTask
 
 ```nix
-tasks.ci = lib.mkCompoundTask {
+tasks.ci = tasksLib.mkCompoundTask {
   description = "Run full CI pipeline";
   tasks = [ "lint" "test" "build" ];
   # Depends on all listed tasks, plus anything in `depends`
 };
 ```
 
-### Task Modifiers
-
-Task modifiers let you customize existing tasks without redefining them from
-scratch. This is especially useful when extending standardized configurations in
-a repository.
-
-#### Modifying task dependencies
+#### Make compatibility
 
 ```nix
-# Prepend a step before the existing dependencies
-tasks.publish = lib.prependTaskDeps [ "generate-bindings" ] standards.tasks.publish;
-
-# Append a step after
-tasks.publish = lib.appendTaskDeps [ "notify" ] standards.tasks.publish;
+tasks = {
+  legacy-build = tasksLib.compat.make.mkMakeTask { target = "build"; };
+} // tasksLib.compat.make.importMakeTargets {
+  targets = [ "clean" "dist" ];
+  prefix = "make";  # make-clean, make-dist
+};
 ```
 
-#### Modifying commands
+### Composing Configuration
+
+Several modules can define the same task or shell; the module system merges
+them. This is how a repository customises shared standards: import the
+standards module and add a module of your own.
 
 ```nix
-# Prepend a setup step to existing commands
-tasks.test = lib.prependCommands
-  [ "echo 'Running setup...'" ]
-  standards.tasks.test;
-
-# Override commands entirely
-tasks.build = lib.overrideCommands
-  [ "go build -o bin/myservice ./cmd/myservice" ]
-  standards.tasks.build;
-```
-
-#### Chaining modifications with pipe
-
-Apply multiple modifications at once using `lib.pipe`:
-
-```nix
-tasks.build = lib.pipe standards.tasks.build [
-  (lib.overrideCommands [ "go build -o bin/myservice ./cmd/myservice" ])
-  (lib.appendDeps [ "protobuf" ])
-  (lib.mergeEnv { BUILD_VERSION = "1.0.0"; })
-  (lib.setDescription "Build myservice")
+modules = [
+  company-standards.nixTasksModules.default
+  ({ lib, ... }: {
+    tasks.lint.commands = lib.mkForce [ "golangci-lint run --config .golangci.yml ./..." ];
+    tasks.test.commands = lib.mkBefore [ "echo 'setting up'" ];
+    tasks.test.env.CGO_ENABLED = "1";
+    tasks.publish.depends = lib.mkBefore [ "task:generate-bindings" ];
+    devShells.default.packages = [ "nodejs" ];
+  })
 ];
 ```
 
-#### Available modifiers
+| To | Write |
+|----|-------|
+| Replace a value | `lib.mkForce value` |
+| Add list items or script lines first | `lib.mkBefore [ ... ]` |
+| Add list items or script lines last | `lib.mkAfter [ ... ]` |
+| Append to `deps`, `depends`, `after`, `inputs`, shell `packages` | a plain list |
+| Add or change `env` variables | a plain attribute set |
+| Clear a value | `lib.mkForce null` (or `[]`) |
+| Let other modules override a value without `mkForce` | `lib.mkDefault value` |
 
-| Modifier | Description |
-|----------|-------------|
-| `prependTaskDeps` / `appendTaskDeps` / `overrideTaskDeps` | Modify task dependencies |
-| `prependAfterHooks` / `appendAfterHooks` / `overrideAfterHooks` | Modify after-hook targets |
-| `prependDeps` / `appendDeps` / `overrideDeps` | Modify package dependencies |
-| `prependCommands` / `appendCommands` / `overrideCommands` | Modify shell commands |
-| `mergeEnv` / `overrideEnv` | Modify environment variables |
-| `appendInputs` / `overrideInputs` | Modify input file patterns |
-| `setDescription` / `setWorkingDir` / `setNoCache` / `setContinueOnError` | Set task metadata |
-| `pipe` | Apply a list of modifiers sequentially |
-
-All modifiers are curried (`modification -> task -> task`) so they work with partial application and `pipe`.
+`commands` and `script` are deliberately stricter than other lists: two
+modules defining them without `mkForce`, `mkBefore` or `mkAfter` is an error
+that explains the fix, because silently running both the standard's and the
+repository's commands is almost never what was meant. Package lists such as
+`deps` concatenate because adding tools is the common intent; duplicates are
+removed. Scalar fields such as `description` follow the module system's usual
+rule: two different plain values are an error unless one uses `mkDefault` or
+`mkForce`.
 
 ### Dev Shells
 
@@ -635,6 +667,12 @@ devShells = {
 };
 ```
 
+A shell gets the packages of every shell it extends, their `env` (closer
+shells win) and their `shellHook`s in order, root first. `env` is passed to
+`mkShell` as environment variables only, so it cannot replace `shellHook` or
+other `mkShell` arguments. Extending an unknown shell, or a chain of shells
+that extends itself, is an evaluation error.
+
 Enter a shell:
 
 ```bash
@@ -651,32 +689,23 @@ $ nix develop .#ci
 
 ## Multi-System Support
 
-Support multiple architectures:
+`mkFlakeOutputs` generates outputs for x86_64/aarch64 Linux and Darwin. Pass
+`systems` to change that:
 
 ```nix
-{
-  outputs = { self, nixpkgs, nix-tasks }:
-    let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-
-      mkConfig = system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          lib = nix-tasks.lib.${system};
-        in lib.evalConfig {
-          packages = { go = pkgs.go; };
-          tasks = { /* ... */ };
-          devShells = { /* ... */ };
-        };
-    in {
-      nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
-      nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
-      devShells = forAllSystems (system: (mkConfig system).devShells);
-    };
+nix-tasks.lib.mkFlakeOutputs {
+  inherit nixpkgs;
+  systems = [ "x86_64-linux" ];
+  modules = [ ./nix-tasks.nix ];
 }
 ```
+
+To evaluate a single system yourself, `nix-tasks.lib.evalConfig { pkgs; modules; }`
+returns that system's `nixTasksConfig`, `nixTasksShells`, `nixTasksShellDrvs`,
+`nixTasksBuilds` and `devShells`, plus the evaluated `config` and `options`.
+
+Upgrading from the `evalConfig`/`extend`/modifier API? See
+[docs/migration.md](./docs/migration.md).
 
 ## Examples
 
@@ -684,20 +713,24 @@ See the [examples](./examples) directory:
 
 - **[simple](./examples/simple)** - Minimal example with build, test, clean tasks
 - **[demo](./examples/demo)** - Full example with 16 tasks, dependencies, and multiple dev shells
+- **[dynamic-tasks](./examples/dynamic-tasks)** - Tasks generated from a list of services
 - **[company-standards](./examples/company-standards)** - Company-wide standards flake template
 - **[app-using-standards](./examples/app-using-standards)** - Repository extending company standards
 
 ## Development
 
 ```bash
-# Enter dev shell
+# Enter dev shell (Go and golangci-lint; run the CLI from source)
 nix develop
 
-# Build
-go build -o nix-tasks ./cmd/nix-tasks
+# Run the CLI
+go run ./cmd/nix-tasks list
 
 # Test
 go test ./...
+
+# Nix library tests
+nix flake check
 
 # Lint
 golangci-lint run ./...

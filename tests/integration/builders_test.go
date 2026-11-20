@@ -16,16 +16,15 @@ import (
 const builderTasksConfig = `{
   packages = { docker = pkgs.hello; kubectl = pkgs.hello; };
   tasks = {
-    a = lib.mkTask { commands = [ "true" ]; };
-    b = lib.mkTask { commands = [ "true" ]; };
-    image = lib.mkDockerTask { image = "app"; deps = [ "kubectl" ]; };
-    group = lib.mkCompoundTask { tasks = [ "a" ]; depends = [ "task:b" ]; };
-    gobuild = lib.mkGoTask {
+    a = tasksLib.mkTask { commands = [ "true" ]; };
+    b = tasksLib.mkTask { commands = [ "true" ]; };
+    image = tasksLib.mkDockerTask { image = "app"; deps = [ "kubectl" ]; };
+    group = tasksLib.mkCompoundTask { tasks = [ "a" ]; depends = [ "task:b" ]; };
+    gobuild = tasksLib.mkGoTask {
       pname = "app";
       src = ./.;
       vendorHash = null;
-      env = { GOFLAGS = "-mod=mod"; };
-      workingDir = "sub";
+      env = { EXTRA_FLAG = "set"; };
       continueOnError = true;
     };
   };
@@ -76,21 +75,16 @@ func TestBuilders_KeepUserArguments(t *testing.T) {
 	}
 
 	gobuild := tasks["gobuild"]
-	env, _ := gobuild["env"].(map[string]any)
-	if env["CGO_ENABLED"] != "0" || env["GOFLAGS"] != "-mod=mod" {
-		t.Errorf("mkGoTask env = %v, want CGO_ENABLED=0 merged with GOFLAGS", env)
-	}
 	if gobuild["continueOnError"] != true {
 		t.Errorf("mkGoTask continueOnError = %v, want true", gobuild["continueOnError"])
 	}
-	if gobuild["workingDir"] != "sub" {
-		t.Errorf("mkGoTask workingDir = %v, want sub", gobuild["workingDir"])
-	}
 
-	attr := fmt.Sprintf("%s#nixTasksBuilds.%s.gobuild.CGO_ENABLED", dir, nix.QuoteAttr(nix.CurrentSystem()))
-	out, err := exec.Command("nix", "eval", "--raw", attr).Output()
-	if err != nil || string(out) != "0" {
-		t.Errorf("derivation CGO_ENABLED = %q (err %v), want 0", out, err)
+	for name, want := range map[string]string{"CGO_ENABLED": "0", "EXTRA_FLAG": "set"} {
+		attr := fmt.Sprintf("%s#nixTasksBuilds.%s.gobuild.%s", dir, nix.QuoteAttr(nix.CurrentSystem()), name)
+		out, err := exec.Command("nix", "eval", "--raw", attr).Output()
+		if err != nil || string(out) != want {
+			t.Errorf("derivation %s = %q (err %v), want %s", name, out, err, want)
+		}
 	}
 }
 
@@ -99,7 +93,7 @@ func TestBuilders_MkGoTaskRequiresSrc(t *testing.T) {
 	binary := nixTasksBinary(t)
 
 	dir := writeTempFlake(t, `{
-  tasks.gobuild = lib.mkGoTask { pname = "app"; vendorHash = null; };
+  tasks.gobuild = tasksLib.mkGoTask { pname = "app"; vendorHash = null; };
 }`, map[string]string{})
 
 	_, stderr, code := runNixTasksIn(t, binary, dir, "list", "-f", dir)

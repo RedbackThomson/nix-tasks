@@ -27,7 +27,7 @@ A unified system that provides:
 
 2. **Company-wide standards** - A base flake that repositories import and extend, ensuring consistency while allowing customization
 
-3. **Composable configuration** - Deep merge with explicit override markers (`override`, `append`, `prepend`) so repos can customize standards without forking
+3. **Composable configuration** - Nix modules (`lib.evalModules`) with `mkForce`/`mkBefore`/`mkAfter`/`mkDefault` so repos can customize standards without forking
 
 4. **Reproducible environments** - Dev shells with inheritance (minimal → ci → default) ensuring tasks run with exact package versions
 
@@ -40,7 +40,7 @@ A unified system that provides:
 | Decision | Choice |
 |----------|--------|
 | Core architecture | Unified config layer (tasks & environments are equal) |
-| Composition model | Deep merge with override markers |
+| Composition model | Nix module system (typed options) |
 | Task execution | Hybrid declarative → shell scripts |
 | Dependencies | Explicit DAG with parallel execution |
 | Environment strategy | Shell inheritance/composition |
@@ -75,24 +75,25 @@ $ nix-tasks
 
 ### Example Configuration
 
-The attribute set passed to `lib.evalConfig`:
+A nix-tasks module, listed in `nix-tasks.lib.mkFlakeOutputs { inherit nixpkgs; modules = [ ... ]; }`:
 
 ```nix
+{ pkgs, tasksLib, ... }:
 {
   packages = {
-    go = pkgs.go_1_22;
+    go = pkgs.go;
     docker = pkgs.docker;
   };
 
   tasks = {
-    build = lib.mkGoTask {
+    build = tasksLib.mkGoTask {
       description = "Build the application";
       pname = "app";
       src = ./.;
       vendorHash = null;
     };
 
-    test = lib.mkTask {
+    test = tasksLib.mkTask {
       description = "Run tests";
       deps = ["go"];
       depends = ["task:build"];
@@ -270,7 +271,7 @@ internal/
     cache/                # Fingerprints (fingerprint.go) and the on-disk store (store.go)
     ui/                   # Colours, status printing and the progress display
     tui/                  # Bubbletea app (app.go)
-lib/                      # Nix library: evalConfig, builders, shells, composition, Make compat
+lib/                      # Nix library: module options (module.nix), outputs (eval.nix), builders, Make compat, tests
 ```
 
 ### Interface Design
@@ -323,7 +324,7 @@ func TestValidate(t *testing.T) {
         {
             name: "valid config",
             config: &config.Config{
-                Packages: map[string]string{"go": "/nix/store/..."},
+                Packages: []string{"go"},
                 Tasks:    map[string]config.Task{"build": {Deps: []string{"go"}}},
             },
             wantErr: false,
@@ -331,7 +332,7 @@ func TestValidate(t *testing.T) {
         {
             name: "unknown package in task",
             config: &config.Config{
-                Packages: map[string]string{},
+                Packages: []string{},
                 Tasks:    map[string]config.Task{"build": {Deps: []string{"go"}}},
             },
             wantErr: true,
@@ -649,9 +650,9 @@ func TestThing(t *testing.T) {
 
 ### Adding a New Nix Builder
 
-1. Add builder function to `lib/builders.nix`
-2. Export from `lib/default.nix`
-3. Document usage in examples
+1. Add builder function to `lib/builders.nix` (it is exported through `mkLib`). Return only the fields the caller set plus the builder's own, and wrap invented defaults in `lib.mkDefault`.
+2. Add a case to `lib/tests.nix` (`nix flake check`)
+3. Document usage in README and examples
 
 ### Running Tests
 
@@ -661,6 +662,9 @@ go test ./...
 
 # With coverage
 go test -cover ./...
+
+# Nix library tests
+nix flake check
 
 # Integration tests (requires Nix)
 go test -tags=integration ./tests/integration/...

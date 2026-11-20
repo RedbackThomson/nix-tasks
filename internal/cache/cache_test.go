@@ -72,16 +72,13 @@ func TestComputeFingerprint(t *testing.T) {
 			Deps:     []string{"go"},
 			Commands: []string{"go build ./..."},
 		})
-		packages := map[string]string{
-			"go": "/nix/store/abc123-go",
-		}
 
-		fp1, err := ComputeFingerprint(task, packages, "")
+		fp1, err := ComputeFingerprint(task, "")
 		if err != nil {
 			t.Fatalf("ComputeFingerprint() error = %v", err)
 		}
 
-		fp2, err := ComputeFingerprint(task, packages, "")
+		fp2, err := ComputeFingerprint(task, "")
 		if err != nil {
 			t.Fatalf("ComputeFingerprint() error = %v", err)
 		}
@@ -100,35 +97,29 @@ func TestComputeFingerprint(t *testing.T) {
 			Deps:     []string{"go"},
 			Commands: []string{"go test ./..."},
 		})
-		packages := map[string]string{
-			"go": "/nix/store/abc123-go",
-		}
 
-		fp1, _ := ComputeFingerprint(task1, packages, "")
-		fp2, _ := ComputeFingerprint(task2, packages, "")
+		fp1, _ := ComputeFingerprint(task1, "")
+		fp2, _ := ComputeFingerprint(task2, "")
 
 		if fp1.Hash == fp2.Hash {
 			t.Error("Fingerprints should differ for different commands")
 		}
 	})
 
-	t.Run("different packages produce different fingerprint", func(t *testing.T) {
-		task := withInputs(config.Task{
-			Deps:     []string{"go"},
-			Commands: []string{"go build ./..."},
+	t.Run("different task shells produce different fingerprint", func(t *testing.T) {
+		task1 := withInputs(config.Task{
+			Deps:         []string{"go"},
+			Commands:     []string{"go build ./..."},
+			ShellDrvPath: "/nix/store/abc123-nix-shell.drv",
 		})
-		packages1 := map[string]string{
-			"go": "/nix/store/abc123-go-1.21",
-		}
-		packages2 := map[string]string{
-			"go": "/nix/store/def456-go-1.22",
-		}
+		task2 := task1
+		task2.ShellDrvPath = "/nix/store/def456-nix-shell.drv"
 
-		fp1, _ := ComputeFingerprint(task, packages1, "")
-		fp2, _ := ComputeFingerprint(task, packages2, "")
+		fp1, _ := ComputeFingerprint(task1, "")
+		fp2, _ := ComputeFingerprint(task2, "")
 
 		if fp1.Hash == fp2.Hash {
-			t.Error("Fingerprints should differ for different packages")
+			t.Error("Fingerprints should differ for different task shells")
 		}
 	})
 
@@ -143,12 +134,9 @@ func TestComputeFingerprint(t *testing.T) {
 			Deps:        []string{"go"},
 			Commands:    []string{"go build ./..."},
 		})
-		packages := map[string]string{
-			"go": "/nix/store/abc123-go",
-		}
 
-		fp1, _ := ComputeFingerprint(task1, packages, "")
-		fp2, _ := ComputeFingerprint(task2, packages, "")
+		fp1, _ := ComputeFingerprint(task1, "")
+		fp2, _ := ComputeFingerprint(task2, "")
 
 		if fp1.Hash != fp2.Hash {
 			t.Error("Description should not affect fingerprint")
@@ -166,12 +154,9 @@ func TestComputeFingerprint(t *testing.T) {
 			Commands: []string{"go build ./..."},
 			Env:      map[string]string{"CGO_ENABLED": "1"},
 		})
-		packages := map[string]string{
-			"go": "/nix/store/abc123-go",
-		}
 
-		fp1, _ := ComputeFingerprint(task1, packages, "")
-		fp2, _ := ComputeFingerprint(task2, packages, "")
+		fp1, _ := ComputeFingerprint(task1, "")
+		fp2, _ := ComputeFingerprint(task2, "")
 
 		if fp1.Hash == fp2.Hash {
 			t.Error("Fingerprints should differ for different env vars")
@@ -184,11 +169,8 @@ func TestComputeFingerprint(t *testing.T) {
 			Deps:     []string{"go"},
 			Commands: []string{"go build ./..."},
 		}
-		packages := map[string]string{
-			"go": "/nix/store/abc123-go",
-		}
 
-		fp, err := ComputeFingerprint(task, packages, "")
+		fp, err := ComputeFingerprint(task, "")
 		if err != nil {
 			t.Fatalf("ComputeFingerprint() error = %v", err)
 		}
@@ -203,11 +185,8 @@ func TestComputeFingerprint(t *testing.T) {
 			Deps:     []string{"go"},
 			Commands: []string{"go build ./..."},
 		}
-		packages := map[string]string{
-			"go": "/nix/store/abc123-go",
-		}
 
-		fp, _ := ComputeFingerprint(task, packages, "")
+		fp, _ := ComputeFingerprint(task, "")
 		if fp != nil {
 			t.Errorf("expected nil fingerprint for untyped task without inputs, got %s", fp.Hash)
 		}
@@ -219,7 +198,7 @@ func TestComputeFingerprint(t *testing.T) {
 			Inputs: []string{"**/*.go"},
 		}
 
-		fp, err := ComputeFingerprint(task, nil, "")
+		fp, err := ComputeFingerprint(task, "")
 		if err != nil {
 			t.Fatalf("ComputeFingerprint() error = %v", err)
 		}
@@ -236,7 +215,7 @@ func TestComputeFingerprint(t *testing.T) {
 			NoCache:  true,
 		}
 
-		fp, _ := ComputeFingerprint(task, nil, "")
+		fp, _ := ComputeFingerprint(task, "")
 		if fp != nil {
 			t.Errorf("expected nil fingerprint when NoCache=true, got %s", fp.Hash)
 		}
@@ -255,7 +234,7 @@ func TestComputeFingerprint(t *testing.T) {
 		if err := os.WriteFile(file, []byte("package main\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		fp1, err := ComputeFingerprint(task, nil, dir)
+		fp1, err := ComputeFingerprint(task, dir)
 		if err != nil {
 			t.Fatalf("ComputeFingerprint() error = %v", err)
 		}
@@ -263,7 +242,7 @@ func TestComputeFingerprint(t *testing.T) {
 		if err := os.WriteFile(file, []byte("package main\n\nfunc main() {}\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		fp2, err := ComputeFingerprint(task, nil, dir)
+		fp2, err := ComputeFingerprint(task, dir)
 		if err != nil {
 			t.Fatalf("ComputeFingerprint() error = %v", err)
 		}

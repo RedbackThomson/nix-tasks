@@ -27,7 +27,7 @@ type Fingerprint struct {
 //   - the task declares no inputs. Without an explicit input set, the
 //     fingerprint can't see source-file changes (e.g. switching git branches),
 //     so caching would produce stale hits.
-func ComputeFingerprint(task config.Task, packages map[string]string, workDir string) (*Fingerprint, error) {
+func ComputeFingerprint(task config.Task, workDir string) (*Fingerprint, error) {
 	if task.NoCache || task.Type == config.TaskTypeBuild {
 		return nil, nil
 	}
@@ -59,17 +59,9 @@ func ComputeFingerprint(task config.Task, packages map[string]string, workDir st
 	}
 	h.Write(taskJSON)
 
-	// Hash package store paths (sorted for determinism)
-	deps := make([]string, 0, len(task.Deps))
-	for _, dep := range task.Deps {
-		if path, ok := packages[dep]; ok {
-			deps = append(deps, path)
-		}
-	}
-	sort.Strings(deps)
-	for _, path := range deps {
-		h.Write([]byte(path))
-	}
+	// The shell's drvPath changes whenever any of its packages does, without
+	// the cost of resolving each package's store path.
+	h.Write([]byte(task.ShellDrvPath))
 
 	// Hash input files if specified
 	if len(task.Inputs) > 0 {

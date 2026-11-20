@@ -10,7 +10,7 @@ func TestRun_PipelineFailureFailsTask(t *testing.T) {
 	skipIfNoNix(t)
 	binary := nixTasksBinary(t)
 	dir := writeTempFlake(t, `{
-  tasks.piped = lib.mkTask { commands = [ "exit 7 | cat" ]; };
+  tasks.piped = tasksLib.mkTask { commands = [ "exit 7 | cat" ]; };
 }`, map[string]string{})
 
 	stdout, stderr, code := runNixTasksIn(t, binary, dir, "run", "piped", "-f", dir)

@@ -19,7 +19,7 @@ type Evaluator interface {
 // initializeMaps ensures all config maps are initialized to non-nil values
 func initializeMaps(cfg *Config) {
 	if cfg.Packages == nil {
-		cfg.Packages = make(map[string]string)
+		cfg.Packages = []string{}
 	}
 	if cfg.Tasks == nil {
 		cfg.Tasks = make(map[string]Task)
@@ -84,7 +84,7 @@ func decodeConfig(raw json.RawMessage) (*Config, error) {
 	cfg := &Config{}
 	if top.Packages != nil {
 		if err := json.Unmarshal(*top.Packages, &cfg.Packages); err != nil {
-			return nil, fmt.Errorf("packages: %w", err)
+			return nil, fmt.Errorf("packages: expected a list of package names (is the flake's nix-tasks input older than this CLI?): %w", err)
 		}
 	}
 

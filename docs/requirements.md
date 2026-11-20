@@ -18,10 +18,10 @@
 - Version consistency enforced: tasks and shells must use same package versions
 
 ### 2. Configuration Composition
-**Deep Merge with Override Markers**
-- Child repos deep-merge with parent configs by default
-- Explicit syntax for override semantics: `override`, `append`, `prepend`
-- Intuitive defaults with clear vocabulary for modifications
+**Nix Module System**
+- Configuration is a set of typed options evaluated with `lib.evalModules`; standards are modules repos import
+- Override semantics use the module system's vocabulary: `mkForce`, `mkBefore`, `mkAfter`, `mkDefault`
+- Lists concatenate, except task `commands`/`script`, which must not be defined twice without an explicit order
 - Enables company standards + repo-specific customization
 
 ### 3. Dependency Version Management
@@ -84,11 +84,14 @@ inputs = {
   company-tasks.url = "github:mycompany/nix-tasks-standard/v2.3.0";
 };
 
-outputs = { company-tasks, ... }: {
-  tasks = company-tasks.lib.extend {
-    # repo-specific overrides
+outputs = { nixpkgs, nix-tasks, company-tasks, ... }:
+  nix-tasks.lib.mkFlakeOutputs {
+    inherit nixpkgs;
+    modules = [
+      company-tasks.nixTasksModules.default
+      ./nix-tasks.nix  # repo-specific overrides
+    ];
   };
-};
 ```
 
 ### 9. Caching Strategy
@@ -167,7 +170,7 @@ devShells.default = { extends = "ci"; packages = ["kubectl" "jq"]; };
 
 ### Company-Wide Standards
 - **Distribution**: Via Nix flake inputs with version pinning
-- **Customization**: Deep merge with override markers
+- **Customization**: Nix modules with `mkForce`/`mkBefore`/`mkAfter`/`mkDefault`
 - **Migration**: Gradual adoption with Make compatibility layer
 - **Consistency**: Shared package registry ensures version alignment
 

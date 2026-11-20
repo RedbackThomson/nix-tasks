@@ -18,10 +18,15 @@ func (e *ValidationError) Error() string {
 func Validate(cfg *Config) error {
 	var errs []string
 
+	packages := make(map[string]bool, len(cfg.Packages))
+	for _, name := range cfg.Packages {
+		packages[name] = true
+	}
+
 	// Check task deps reference valid packages
 	for taskName, task := range cfg.Tasks {
 		for _, dep := range task.Deps {
-			if _, ok := cfg.Packages[dep]; !ok {
+			if !packages[dep] {
 				errs = append(errs, fmt.Sprintf("task '%s': unknown package '%s'", taskName, dep))
 			}
 		}
@@ -46,7 +51,7 @@ func Validate(cfg *Config) error {
 	// Check shell packages reference valid packages
 	for shellName, shell := range cfg.DevShells {
 		for _, pkg := range shell.Packages {
-			if _, ok := cfg.Packages[pkg]; !ok {
+			if !packages[pkg] {
 				errs = append(errs, fmt.Sprintf("shell '%s': unknown package '%s'", shellName, pkg))
 			}
 		}
