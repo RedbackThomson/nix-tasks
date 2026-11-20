@@ -29,7 +29,6 @@ func (c *ListCmd) Run(globals *Globals) error {
 	ctx := context.Background()
 
 	eval := nix.NewEvaluator(globals.Flake)
-	eval.SetDebug(globals.Debug)
 
 	cfg, err := config.Load(ctx, eval)
 	if err != nil {

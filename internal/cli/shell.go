@@ -28,7 +28,6 @@ func (c *ShellCmd) Run(globals *Globals) error {
 	}
 
 	eval := nix.NewEvaluator(globals.Flake)
-	eval.SetDebug(globals.Debug)
 
 	// Load and validate config
 	cfg, err := config.Load(ctx, eval)
