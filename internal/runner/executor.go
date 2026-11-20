@@ -124,9 +124,13 @@ func taskScript(task config.Task) string {
 }
 
 // runShellTask runs a shell task's script with bash in the environment of
-// the task's shell.
+// the task's shell. A task with nothing to run, such as one that only groups
+// other tasks, succeeds without realising its shell.
 func (e *Executor) runShellTask(ctx context.Context, name string, task config.Task) error {
 	script := taskScript(task)
+	if script == "" {
+		return nil
+	}
 
 	stdout, stderr := e.reporter.TaskOutput(name)
 

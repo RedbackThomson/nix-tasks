@@ -349,7 +349,9 @@ the `devenv/` directory of the nix-tasks cache (`~/.cache/nix-tasks`,
 by the shell's derivation, so later runs with the same packages start tasks
 without calling Nix for them; a Nix profile link next to each entry stops
 `nix store gc` from collecting the shell's packages while the entry exists.
-Deleting the directory is always safe.
+Deleting the directory is always safe. A task with neither `commands` nor
+`script`, such as one made with `mkCompoundTask`, needs no shell and finishes
+as soon as its dependencies do.
 
 Each task starts as soon as all of its dependencies have succeeded, up to `-j`
 tasks at a time. If a dependency fails, its dependents are skipped. By default

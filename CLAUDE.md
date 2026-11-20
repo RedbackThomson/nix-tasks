@@ -510,7 +510,8 @@ in one `nix eval`; `Evaluator.PrintDevEnvCmd` realises each distinct shell
 once with `nix print-dev-env --json --profile <link>`, and
 `internal/runner/devenv.go` caches the result on disk by drvPath. The script
 (the task's `script`, or its `commands` joined by newlines) runs as
-`bash -e -o pipefail -c <script>`. Build tasks run
+`bash -e -o pipefail -c <script>`. A shell task with no commands or script
+(e.g. from `mkCompoundTask`) finishes without evaluating a shell. Build tasks run
 `nix build <flake>#nixTasksBuilds."<system>"."<task>"^* --no-link --json`
 (`Evaluator.BuildCmd`) and link each output nix reports to
 `.nix-tasks/<task>/<output>`.
