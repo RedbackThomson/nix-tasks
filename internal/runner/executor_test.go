@@ -21,7 +21,7 @@ func TestExecutor_TaskDir(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := &Executor{options: ExecutorOptions{FlakeRoot: tt.root}}
+			e := &Executor{options: Options{FlakeRoot: tt.root}}
 			if got := e.taskDir(config.Task{WorkingDir: tt.workingDir}); got != tt.want {
 				t.Errorf("taskDir() = %q, want %q", got, tt.want)
 			}

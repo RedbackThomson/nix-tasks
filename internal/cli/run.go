@@ -23,7 +23,7 @@ const failedOutputTailLines = 50
 // RunCmd runs a task
 type RunCmd struct {
 	Task            string `arg:"" help:"Task name to run"`
-	Jobs            int    `short:"j" help:"Number of parallel jobs" default:"4"`
+	Jobs            int    `short:"j" help:"Number of tasks to run at once (default: the number of CPUs available)"`
 	ContinueOnError bool   `help:"Continue running independent tasks on failure"`
 	Stream          bool   `help:"Stream task output in real-time (default in CI)"`
 	Force           bool   `help:"Force re-run tasks even if cached"`
@@ -106,28 +106,20 @@ func (c *RunCmd) Run(globals *Globals) error {
 		progress.Start()
 	}
 
-	// Execute tasks
-	parallel := runner.NewParallelExecutor(
-		eval,
-		cfg,
-		runner.ExecutorOptions{
-			Verbose:    verbose,
-			Debug:      globals.Debug,
-			Force:      c.Force,
-			NoCache:    c.NoCache,
-			ProjectKey: projectKey,
-			RawTarget:  rawTarget,
-			Progress:   progress,
-			FlakeRoot:  globals.FlakeRoot,
-		},
-		runner.ParallelExecutorOptions{
-			MaxJobs:         c.Jobs,
-			ContinueOnError: c.ContinueOnError,
-		},
-	)
+	executor := runner.NewExecutor(eval, cfg, runner.Options{
+		Jobs:            c.Jobs,
+		ContinueOnError: c.ContinueOnError,
+		Verbose:         verbose,
+		Force:           c.Force,
+		NoCache:         c.NoCache,
+		ProjectKey:      projectKey,
+		RawTarget:       rawTarget,
+		Progress:        progress,
+		FlakeRoot:       globals.FlakeRoot,
+	})
 
 	slog.Debug("starting execution", "task", c.Task)
-	results, err := parallel.ExecuteDAG(ctx, graph, c.Task)
+	results, err := executor.Run(ctx, graph, c.Task)
 
 	// Stop progress display (does final render, restores cursor)
 	if progress != nil {

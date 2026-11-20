@@ -9,7 +9,6 @@ import (
 
 	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
-	"github.com/redbackthomson/nix-tasks/internal/nix"
 )
 
 // TaskResult holds the result of a task execution
@@ -22,54 +21,8 @@ type TaskResult struct {
 	Output   string // Buffered stdout/stderr (non-verbose mode only)
 }
 
-// ParallelExecutor runs tasks with parallelism
-type ParallelExecutor struct {
-	executor        *Executor // Delegate to executor for task execution
-	cache           *cache.Store
-	maxJobs         int
-	continueOnError bool
-}
-
-// ParallelExecutorOptions configures the parallel executor
-type ParallelExecutorOptions struct {
-	MaxJobs int
-	// ContinueOnError keeps running independent tasks after a failure
-	// instead of cancelling the rest of the run.
-	ContinueOnError bool
-}
-
-// NewParallelExecutor creates a parallel executor
-func NewParallelExecutor(
-	eval *nix.Evaluator,
-	cfg *config.Config,
-	execOpts ExecutorOptions,
-	parallelOpts ParallelExecutorOptions,
-) *ParallelExecutor {
-	maxJobs := parallelOpts.MaxJobs
-	if maxJobs <= 0 {
-		maxJobs = 4 // Default parallelism
-	}
-	eval.SetDebug(execOpts.Debug)
-
-	// Initialize cache store if caching is enabled
-	var cacheStore *cache.Store
-	if !execOpts.NoCache && execOpts.ProjectKey != "" {
-		cacheStore = cache.NewStore(execOpts.ProjectKey)
-	}
-
-	// Create an executor for task execution
-	executor := NewExecutor(eval, cfg, execOpts)
-
-	return &ParallelExecutor{
-		executor:        executor,
-		cache:           cacheStore,
-		maxJobs:         maxJobs,
-		continueOnError: parallelOpts.ContinueOnError,
-	}
-}
-
-// ExecuteDAG executes all tasks required for target, respecting dependencies
-func (p *ParallelExecutor) ExecuteDAG(ctx context.Context, graph *TaskGraph, target string) ([]TaskResult, error) {
+// Run executes all tasks required for target, respecting dependencies
+func (p *Executor) Run(ctx context.Context, graph *TaskGraph, target string) ([]TaskResult, error) {
 	groups, err := graph.ParallelGroups(target)
 	if err != nil {
 		return nil, err
@@ -82,7 +35,7 @@ func (p *ParallelExecutor) ExecuteDAG(ctx context.Context, graph *TaskGraph, tar
 
 	for _, group := range groups {
 		// Check if we should stop due to prior failure
-		if failed && !p.continueOnError {
+		if failed && !p.options.ContinueOnError {
 			results = append(results, p.skipTasks(group, context.Canceled)...)
 			continue
 		}
@@ -100,7 +53,7 @@ func (p *ParallelExecutor) ExecuteDAG(ctx context.Context, graph *TaskGraph, tar
 		for _, r := range groupResults {
 			if !r.Success {
 				failed = true
-				if !p.continueOnError {
+				if !p.options.ContinueOnError {
 					cancel()
 					break
 				}
@@ -112,15 +65,15 @@ func (p *ParallelExecutor) ExecuteDAG(ctx context.Context, graph *TaskGraph, tar
 }
 
 // executeGroup runs a group of independent tasks in parallel
-func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, tasks []string) []TaskResult {
+func (p *Executor) executeGroup(ctx context.Context, graph *TaskGraph, tasks []string) []TaskResult {
 	results := make([]TaskResult, len(tasks))
-	sem := make(chan struct{}, p.maxJobs)
+	sem := make(chan struct{}, p.options.Jobs)
 	var wg sync.WaitGroup
 
 	for i, name := range tasks {
 		// Register task with progress display before launching goroutine
-		if p.executor.options.Progress != nil {
-			p.executor.options.Progress.RegisterTask(name)
+		if p.options.Progress != nil {
+			p.options.Progress.RegisterTask(name)
 		}
 
 		wg.Add(1)
@@ -137,8 +90,8 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 					Success: false,
 					Error:   ctx.Err(),
 				}
-				if p.executor.options.Progress != nil {
-					p.executor.options.Progress.TaskSkipped(taskName)
+				if p.options.Progress != nil {
+					p.options.Progress.TaskSkipped(taskName)
 				}
 				return
 			}
@@ -150,8 +103,8 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 					Success: false,
 					Error:   ctx.Err(),
 				}
-				if p.executor.options.Progress != nil {
-					p.executor.options.Progress.TaskSkipped(taskName)
+				if p.options.Progress != nil {
+					p.options.Progress.TaskSkipped(taskName)
 				}
 				return
 			}
@@ -165,16 +118,16 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 			duration := time.Since(start)
 
 			// Notify progress display of completion
-			if p.executor.options.Progress != nil {
-				p.executor.options.Progress.TaskFinished(taskName, err, duration, cached)
+			if p.options.Progress != nil {
+				p.options.Progress.TaskFinished(taskName, err, duration, cached)
 			}
 
 			// Get buffered output from the appropriate source
 			output := ""
-			if p.executor.options.Progress != nil {
-				output = p.executor.options.Progress.GetBuffer(taskName)
+			if p.options.Progress != nil {
+				output = p.options.Progress.GetBuffer(taskName)
 			} else {
-				output = p.executor.printer.GetBuffer(taskName)
+				output = p.printer.GetBuffer(taskName)
 			}
 
 			results[idx] = TaskResult{
@@ -193,12 +146,12 @@ func (p *ParallelExecutor) executeGroup(ctx context.Context, graph *TaskGraph, t
 }
 
 // runTask executes a single task with caching support
-func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config.Task) (cached bool, err error) {
+func (p *Executor) runTask(ctx context.Context, name string, task config.Task) (cached bool, err error) {
 	// Compute fingerprint for caching
 	var fp *cache.Fingerprint
 	if p.cache != nil {
 		var fpErr error
-		fp, fpErr = cache.ComputeFingerprint(task, p.executor.config.Packages, p.executor.taskDir(task))
+		fp, fpErr = cache.ComputeFingerprint(task, p.config.Packages, p.taskDir(task))
 		if fpErr != nil {
 			slog.Debug("failed to compute fingerprint", "task", name, "error", fpErr)
 			// Continue without caching
@@ -209,7 +162,7 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 	}
 
 	// Check cache if not forcing rebuild
-	if fp != nil && !p.executor.options.Force {
+	if fp != nil && !p.options.Force {
 		if entry, ok := p.cache.Lookup(name, fp); ok {
 			if !entry.Success {
 				return true, &TaskExecutionError{Name: name, Err: fmt.Errorf("failed (cached)")}
@@ -219,7 +172,7 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 	}
 
 	// Execute the task using the executor (handles both shell and build tasks)
-	execErr := p.executor.RunTask(ctx, name, task)
+	execErr := p.execTask(ctx, name, task)
 
 	// Store result in cache (even failures, so we can skip them next time)
 	if fp != nil {
@@ -240,12 +193,12 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 }
 
 // skipTasks marks a group of tasks as skipped and returns their results
-func (p *ParallelExecutor) skipTasks(tasks []string, err error) []TaskResult {
+func (p *Executor) skipTasks(tasks []string, err error) []TaskResult {
 	results := make([]TaskResult, len(tasks))
 	for i, name := range tasks {
-		if p.executor.options.Progress != nil {
-			p.executor.options.Progress.RegisterTask(name)
-			p.executor.options.Progress.TaskSkipped(name)
+		if p.options.Progress != nil {
+			p.options.Progress.RegisterTask(name)
+			p.options.Progress.TaskSkipped(name)
 		}
 		results[i] = TaskResult{
 			Name:    name,
