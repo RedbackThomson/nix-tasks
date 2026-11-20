@@ -179,8 +179,8 @@ import (
 // The external packages in use, each with no stdlib alternative
 import (
     "github.com/alecthomas/kong"                     // CLI
-    tea "github.com/charmbracelet/bubbletea"         // TUI
-    "github.com/charmbracelet/lipgloss"              // TUI styling
+    tea "charm.land/bubbletea/v2"                    // TUI
+    "charm.land/lipgloss/v2"                         // TUI styling
     "github.com/charmbracelet/x/term"                // terminal size
     "github.com/charmbracelet/x/ansi"                // display width of styled text
     "github.com/bmatcuk/doublestar/v4"               // ** globs for task inputs
