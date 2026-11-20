@@ -390,6 +390,12 @@ debug level on every miss, so `--debug` users get it without the flag.
   `run --explain`'s job.
 - `graph` marks tasks that declare a cache with `(cache)`; it does not run
   anything, so it cannot say whether they would hit.
+- The GitHub Actions output shows hits as `━━ ● generate cached · saved 41.2s ━━`
+  banners and `● generate · cached · saved 41.2s` Results lines, totals
+  `2 cached (saved 53.0s)`, and the saved time or the reason a task ran
+  uncached in the job summary's Notes column. Run warnings (always runs, cache
+  disabled) and task warnings (not stored) become `::warning` annotations; see
+  [github-actions-output.md](./github-actions-output.md#cache-warnings).
 - `TaskResult` carries `Cached`, `Saved` (the stored run's duration),
   `Cache` (the decision: uncached reason, forced, miss explanation, stored)
   and `Warnings`, which is everything a reporter needs.

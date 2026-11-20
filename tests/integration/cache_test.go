@@ -178,7 +178,7 @@ func TestCache_InterruptedRunIsNotStored(t *testing.T) {
 	f.write("block", "")
 	cmd := exec.Command(f.binary, "run", "slow", "-f", f.dir)
 	cmd.Dir = f.dir
-	cmd.Env = append(cmd.Environ(), "NIX_TASKS_CACHE_DIR="+f.cacheDir)
+	cmd.Env = append(testEnviron(), "NIX_TASKS_CACHE_DIR="+f.cacheDir)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Start(); err != nil {
@@ -379,6 +379,51 @@ func TestCache_ExplainNamesEditedInput(t *testing.T) {
 	}
 	if out := f.mustRun("generate", "--explain"); !strings.Contains(out, "generate: hit (saved ") {
 		t.Errorf("--explain should report the hit:\n%s", out)
+	}
+}
+
+// runGitHub runs a task as GitHub Actions would, sharing the flake's cache,
+// and returns stdout and stderr together with colour removed, as the job log
+// shows them, and the job summary.
+func (f *cacheFlake) runGitHub(args ...string) (string, string) {
+	f.t.Helper()
+	summary := filepath.Join(f.t.TempDir(), "summary.md")
+	cmd := exec.Command(f.binary, append(append([]string{"run"}, args...), "-f", f.dir)...)
+	cmd.Dir = f.dir
+	cmd.Env = append(testEnviron("CI"), "GITHUB_ACTIONS=true", "GITHUB_STEP_SUMMARY="+summary, "NIX_TASKS_CACHE_DIR="+f.cacheDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		f.t.Fatalf("run %v failed: %v\n%s", args, err, out)
+	}
+	md, err := os.ReadFile(summary)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return stripANSI(string(out)), string(md)
+}
+
+func TestCache_GitHubOutput(t *testing.T) {
+	f := newCacheFlake(t)
+	f.runGitHub("package")
+	out, md := f.runGitHub("package")
+	for _, want := range []string{"━━ ● generate cached · saved ", "● package · cached · saved ", "2 cached (saved "} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log missing %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(md, "| generate | ● cached | — | saved ") {
+		t.Errorf("job summary missing the saved time:\n%s", md)
+	}
+
+	out, md = f.runGitHub("downstream")
+	warning := "downstream has cache enabled but always runs: it depends on tools, which is not cached"
+	for _, want := range []string{"nix-tasks: warning: " + warning, "::warning title=nix-tasks::" + warning} {
+		if !strings.Contains(out, want) {
+			t.Errorf("log missing %q:\n%s", want, out)
+		}
+	}
+	if !strings.Contains(md, "| downstream | ✓ passed |") || !strings.Contains(md, "not cached: depends on uncached tools") {
+		t.Errorf("job summary should say why downstream ran:\n%s", md)
 	}
 }
 

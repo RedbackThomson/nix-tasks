@@ -504,16 +504,16 @@ lint     │ apis/v1/types.go:42:2: ineffectual assignment to err (ineffassign)
 generate │ wrote package/crds/example.io_widgets.yaml
 ━━ ✗ lint failed · exit 1 · 3.1s ━━
 ━━ ✓ generate · 12.4s ━━
-━━ ● vet cached ━━
+━━ ● vet cached · saved 18.2s ━━
 ━━ - deploy skipped · lint failed ━━
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ✓ generate · 12.4s
 ▸ ✗ lint · exit 1 · 3.1s
-● vet · cached
+● vet · cached · saved 18.2s
 - deploy · skipped (lint failed)
 
-✗ 1 failed · 1 passed · 1 cached · 1 skipped · 16.2s
+✗ 1 failed · 1 passed · 1 cached (saved 18.2s) · 1 skipped · 16.2s
 ```
 
 - Each line of task output is prefixed with the task's
@@ -531,11 +531,16 @@ generate │ wrote package/crds/example.io_widgets.yaml
 - The Results section lists every task in dependency order. Failed and
   allowed-failure tasks are folded groups holding their whole output, so it
   can be read without other tasks mixed in.
-- Each failed task raises an error annotation and each allowed failure a
-  warning. GitHub shows 10 of each per step, counting the tools' own
-  annotations too; past that, nix-tasks' last one counts the rest.
+- Each failed task raises an error annotation, and each allowed failure and
+  each [cache](#caching) warning (a cached task that always runs because of an
+  uncached upstream, a result that was not stored) a warning annotation.
+  GitHub shows 10 of each per step, counting the tools' own annotations too;
+  past that, nix-tasks' last one counts the rest. Cache warnings about the run
+  are also printed on stderr as they happen, and task warnings under the
+  task's Results line.
 - When `GITHUB_STEP_SUMMARY` is set, a table of results and the last 50 lines
-  of each failure are appended to the job summary.
+  of each failure are appended to the job summary. Cache hits show the time
+  they saved, and a cached task that ran says why it was not cached.
 - Output is coloured even though stdout is not a terminal, because the
   GitHub log viewer renders colour; `NO_COLOR` or `--color=never` turns it off.
 

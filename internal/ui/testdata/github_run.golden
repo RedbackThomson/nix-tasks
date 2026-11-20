@@ -4,7 +4,7 @@ evaluated nixTasksConfig (1.9s)
 environment for build, generate, lint: cached environment (0.1s)
 environment for generate-crossplane-provider-aws-ec2-managed-resources-crds, fmt-check: built with nix print-dev-env (2.6s)
 ::endgroup::
-<1;34>━━ ● vet cached ━━<0>
+<1;34>━━ ● vet cached · saved 18.2s ━━<0>
 <2;96>▶ generate<0>
 <2;94>▶ lint<0>
 <2;95>▶ g-c-p-a-e-m-resources-crds = generate-crossplane-provider-aws-ec2-managed-resources-crds<0>
@@ -33,15 +33,18 @@ environment for generate-crossplane-provider-aws-ec2-managed-resources-crds, fmt
 ::endgroup::
 ::TOKEN::
 ::endgroup::
-<34>●<0> vet · cached
+<34>●<0> vet · cached · saved 18.2s
 ::group::! fmt-check · failed, allowed · exit 1 · 0.4s
 ::stop-commands::TOKEN
 main.go
 ::TOKEN::
 ::endgroup::
 <32>✓<0> build · 41.0s
+  <33>warning:<0> not cached: inputs changed while it ran: go.sum
 <90>-<0> deploy · skipped (lint failed)
 
-<31>✗<0> <31>1 failed<0> · <33>1 allowed failure<0> · 3 passed · 1 cached · 1 skipped · 56.2s
+<31>✗<0> <31>1 failed<0> · <33>1 allowed failure<0> · 3 passed · 1 cached (saved 18.2s) · 1 skipped · 56.2s
 ::error title=nix-tasks%3A lint failed::lint exited with code 1 after 3.1s. Expand "✗ lint" in the Results section of the log.
+::warning title=nix-tasks::generate has cache enabled but always runs: it depends on tools, which is not cached
+::warning title=nix-tasks%3A build::not cached: inputs changed while it ran: go.sum
 ::warning title=nix-tasks%3A fmt-check failed (allowed)::fmt-check exited with code 1 after 0.4s; continueOnError is set, so the run continued.
