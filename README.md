@@ -270,7 +270,7 @@ Commands:
   completions      Generate shell completions
 
 Global Flags:
-  -v, --verbose    Show task output
+  -v, --verbose    Stream task output (alias: --stream)
   --color          Colour output: auto (default), always or never
   --debug          Show debug information
   -f, --flake      Path to flake (default: ".")
@@ -322,7 +322,7 @@ $ nix-tasks run build --force
 # Disable caching entirely
 $ nix-tasks run build --no-cache
 
-# Stream output in real-time (default in CI)
+# Stream output in real-time (default in CI; same as -v)
 $ nix-tasks run build --stream
 ```
 
