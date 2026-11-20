@@ -490,7 +490,9 @@ tasks.build = lib.mkGoTask {
 };
 ```
 
-`mkGoTask` creates a build task backed by `buildGoModule`. Build tasks are
+`mkGoTask` creates a build task backed by `buildGoModule`. `src` is required.
+`env` is merged over the default `CGO_ENABLED = "0"`, and `continueOnError`
+applies as for shell tasks. Build tasks are
 exposed as the flake output `nixTasksBuilds.<system>.<task>`; `nix-tasks run`
 builds that attribute and links each derivation output into
 `.nix-tasks/<task>/<output>` (e.g. `.nix-tasks/build/out/bin/myapp`) in the
@@ -503,7 +505,7 @@ tasks.docker = lib.mkDockerTask {
   description = "Build Docker image";
   image = "myapp";
   tag = "latest";
-  # Automatically adds "docker" to deps
+  # "docker" is always added to deps, alongside any deps you list
 };
 ```
 
@@ -513,7 +515,7 @@ tasks.docker = lib.mkDockerTask {
 tasks.ci = lib.mkCompoundTask {
   description = "Run full CI pipeline";
   tasks = [ "lint" "test" "build" ];
-  # Creates a task that depends on all listed tasks
+  # Depends on all listed tasks, plus anything in `depends`
 };
 ```
 

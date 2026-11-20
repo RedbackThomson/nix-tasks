@@ -31,24 +31,29 @@ rec {
     description ? "Build ${pname}",
     pname ? name,
     version ? "0.1.0",
-    src ? ./.,
+    src,
     vendorHash ? null,
     vendorSha256 ? null,
     subPackages ? null,
     ldflags ? "",
     tags ? [],
     CGO_ENABLED ? "0",
+    env ? {},
     deps ? [],
     depends ? [],
     after ? [],
+    workingDir ? null,
+    continueOnError ? false,
     noCache ? false,
     ...
   }@args:
     let
       # Attributes to remove for buildGoModule
       taskOnlyAttrs = [
-        "name" "description" "deps" "depends" "after" "noCache"
+        "name" "description" "deps" "depends" "after" "workingDir" "continueOnError" "noCache"
       ];
+
+      goEnv = { inherit CGO_ENABLED; } // env;
 
       # Build the Go package using buildGoModule
       goPackage = pkgs.buildGoModule ({
@@ -57,18 +62,15 @@ rec {
       } // (lib.optionalAttrs (subPackages != null) { inherit subPackages; })
         // (lib.optionalAttrs (ldflags != "") { inherit ldflags; })
         // (lib.optionalAttrs (tags != []) { inherit tags; })
-        // {
-          env = {
-            inherit CGO_ENABLED;
-          };
-        }
         // (builtins.removeAttrs args (taskOnlyAttrs ++ [
           "pname" "version" "src" "vendorHash" "vendorSha256"
-          "subPackages" "ldflags" "tags" "CGO_ENABLED"
-        ])));
+          "subPackages" "ldflags" "tags" "CGO_ENABLED" "env"
+        ]))
+        // { env = goEnv; });
     in {
       type = "build";
-      inherit description deps depends after noCache;
+      inherit description deps depends after workingDir continueOnError noCache;
+      env = goEnv;
       derivation = goPackage;
     };
 
@@ -83,24 +85,25 @@ rec {
     deps ? [],
     ...
   }@args:
-    mkShellTask ({
+    mkShellTask ((builtins.removeAttrs args ["image" "tag" "context" "dockerfile" "name" "deps"]) // {
       inherit description;
-      deps = ["docker"] ++ deps;
-      commands = [
+      deps = lib.unique (["docker"] ++ deps);
+      commands = args.commands or [
         "docker build -t ${image}:${tag} -f ${dockerfile} ${context}"
       ];
-    } // (builtins.removeAttrs args ["image" "tag" "context" "dockerfile" "name"]));
+    });
 
   # Compound task (groups other tasks)
   mkCompoundTask = {
     name ? null,
     description ? "",
     tasks,
+    depends ? [],
     ...
   }@args:
-    mkShellTask ({
+    mkShellTask ((builtins.removeAttrs args ["tasks" "name" "depends"]) // {
       inherit description;
-      depends = map (t: "task:${t}") tasks;
-      commands = [];
-    } // (builtins.removeAttrs args ["tasks" "name"]));
+      depends = (map (t: "task:${t}") tasks) ++ depends;
+      commands = args.commands or [];
+    });
 }
