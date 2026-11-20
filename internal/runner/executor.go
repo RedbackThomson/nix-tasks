@@ -13,13 +13,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
-	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
 // Nix is what the runner needs from Nix: commands that run a script in a
@@ -39,12 +37,12 @@ type Options struct {
 	// instead of cancelling the rest of the run.
 	ContinueOnError bool
 
-	Verbose    bool
-	Force      bool                // Bypass cache (re-run even if cached)
-	NoCache    bool                // Don't read or write cache
-	ProjectKey string              // Cache key for project
-	RawTarget  string              // If non-empty, pipe this task's output directly (no decoration)
-	Progress   *ui.ProgressDisplay // Live progress display (nil unless Progress mode)
+	Force      bool   // Bypass cache (re-run even if cached)
+	NoCache    bool   // Don't read or write cache
+	ProjectKey string // Cache key for project
+
+	// Reporter receives task events and output; nil discards them.
+	Reporter Reporter
 
 	// FlakeRoot is the directory tasks run in and relative workingDirs and
 	// .nix-tasks/ resolve against. Empty means the current directory.
@@ -57,8 +55,7 @@ type Executor struct {
 	config   *config.Config
 	options  Options
 	cache    *cache.Store
-	printer  *ui.Printer
-	streamMu sync.Mutex // guards streaming output across tasks
+	reporter Reporter
 }
 
 // NewExecutor creates a task executor
@@ -70,44 +67,22 @@ func NewExecutor(n Nix, cfg *config.Config, opts Options) *Executor {
 	if !opts.NoCache && opts.ProjectKey != "" {
 		store = cache.NewStore(opts.ProjectKey)
 	}
+	var reporter Reporter = discardReporter{}
+	if opts.Reporter != nil {
+		reporter = opts.Reporter
+	}
 	return &Executor{
-		nix:     n,
-		config:  cfg,
-		options: opts,
-		cache:   store,
-		printer: ui.NewPrinter(),
+		nix:      n,
+		config:   cfg,
+		options:  opts,
+		cache:    store,
+		reporter: reporter,
 	}
-}
-
-// taskOutput returns the stdout and stderr writers for a task.
-// In raw mode, the target task's output pipes directly to os.Stdout/os.Stderr.
-// In verbose/streaming mode, output is prefixed with the task name.
-// Otherwise, output is buffered and only shown on failure.
-func (e *Executor) taskOutput(name string) (stdout, stderr io.Writer) {
-	if e.options.RawTarget == name {
-		return os.Stdout, os.Stderr
-	}
-	if e.options.Progress != nil {
-		w := e.options.Progress.Writer(name)
-		return w, w
-	}
-	if e.options.Verbose {
-		pw := &prefixWriter{
-			prefix: fmt.Sprintf("[%s] ", name),
-			out:    os.Stdout,
-			mu:     &e.streamMu,
-		}
-		return pw, pw
-	}
-	buf := e.printer.TaskBuffer(name)
-	return buf, buf
 }
 
 // execTask executes a single task (dispatches to type-specific implementation)
 func (e *Executor) execTask(ctx context.Context, name string, task config.Task) error {
-	if e.options.Progress != nil {
-		e.options.Progress.TaskStarted(name)
-	}
+	e.reporter.TaskStarted(name)
 
 	// Default to shell type if not specified
 	taskType := task.Type
@@ -146,7 +121,7 @@ func (e *Executor) runShellTask(ctx context.Context, name string, task config.Ta
 	cmd := e.nix.DevelopCmd(ctx, shellAttr, []string{"bash", "-e", "-o", "pipefail", "-c", script})
 
 	isolateProcessGroup(cmd)
-	cmd.Stdout, cmd.Stderr = e.taskOutput(name)
+	cmd.Stdout, cmd.Stderr = e.reporter.TaskOutput(name)
 
 	cmd.Dir = e.taskDir(task)
 
@@ -175,7 +150,7 @@ func (e *Executor) runBuildTask(ctx context.Context, name string) error {
 	isolateProcessGroup(cmd)
 
 	var stdout, stderr bytes.Buffer
-	_, taskStderr := e.taskOutput(name)
+	_, taskStderr := e.reporter.TaskOutput(name)
 	cmd.Stdout = &stdout
 	cmd.Stderr = io.MultiWriter(taskStderr, &stderr)
 

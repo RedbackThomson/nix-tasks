@@ -1,14 +1,17 @@
 package runner_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -42,15 +45,71 @@ func logged(name string, depends ...string) config.Task {
 	return sh("echo "+name+" >> ran.log", depends...)
 }
 
+// recorder captures each task's output and the order of reporter events.
+type recorder struct {
+	mu       sync.Mutex
+	outputs  map[string]*bytes.Buffer
+	events   []string
+	finished map[string]int
+}
+
+func newRecorder() *recorder {
+	return &recorder{outputs: map[string]*bytes.Buffer{}, finished: map[string]int{}}
+}
+
+func (r *recorder) TaskStarted(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, "start "+name)
+}
+
+func (r *recorder) TaskOutput(name string) (io.Writer, io.Writer) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.outputs[name] == nil {
+		r.outputs[name] = &bytes.Buffer{}
+	}
+	w := &lockedWriter{mu: &r.mu, buf: r.outputs[name]}
+	return w, w
+}
+
+func (r *recorder) TaskFinished(res runner.TaskResult) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.events = append(r.events, "finish "+res.Name)
+	r.finished[res.Name]++
+}
+
+func (r *recorder) output(name string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if b := r.outputs[name]; b != nil {
+		return b.String()
+	}
+	return ""
+}
+
+type lockedWriter struct {
+	mu  *sync.Mutex
+	buf *bytes.Buffer
+}
+
+func (w *lockedWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.buf.Write(p)
+}
+
 type harness struct {
 	t    *testing.T
 	dir  string
 	opts runner.Options
+	rec  *recorder
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	return &harness{t: t, dir: t.TempDir()}
+	return &harness{t: t, dir: t.TempDir(), rec: newRecorder()}
 }
 
 func (h *harness) run(ctx context.Context, tasks map[string]config.Task, target string) map[string]runner.TaskResult {
@@ -59,8 +118,10 @@ func (h *harness) run(ctx context.Context, tasks map[string]config.Task, target 
 	if err != nil {
 		h.t.Fatalf("NewTaskGraph: %v", err)
 	}
+	h.rec = newRecorder()
 	opts := h.opts
 	opts.FlakeRoot = h.dir
+	opts.Reporter = h.rec
 	ex := runner.NewExecutor(fakeNix{}, &config.Config{Tasks: tasks}, opts)
 	results, err := ex.Run(ctx, graph, target)
 	if err != nil {
@@ -69,6 +130,9 @@ func (h *harness) run(ctx context.Context, tasks map[string]config.Task, target 
 	byName := make(map[string]runner.TaskResult, len(results))
 	for _, r := range results {
 		byName[r.Name] = r
+		if n := h.rec.finished[r.Name]; n != 1 {
+			h.t.Errorf("%s: reported finished %d times, want 1", r.Name, n)
+		}
 	}
 	return byName
 }
@@ -97,7 +161,7 @@ func assertStates(t *testing.T, results map[string]runner.TaskResult, want map[s
 			continue
 		}
 		if r.State != state {
-			t.Errorf("%s: state %v, want %v (err: %v, output: %q)", name, r.State, state, r.Error, r.Output)
+			t.Errorf("%s: state %v, want %v (err: %v)", name, r.State, state, r.Error)
 		}
 	}
 }
@@ -165,12 +229,38 @@ func TestRun_FailedDependencySkipsDependents(t *testing.T) {
 	if ran := h.ran(); !slices.Equal(ran, []string{"good"}) {
 		t.Errorf("only good should run, ran %v", ran)
 	}
-	if !strings.Contains(results["bad"].Output, "boom") {
-		t.Errorf("failed output not kept: %q", results["bad"].Output)
+	if out := h.rec.output("bad"); !strings.Contains(out, "boom") {
+		t.Errorf("failed output not reported: %q", out)
+	}
+	if code := results["bad"].ExitCode(); code != 3 {
+		t.Errorf("ExitCode() = %d, want 3", code)
 	}
 	var exitErr *exec.ExitError
 	if r := results["bad"]; r.Error == nil || !errors.As(r.Error, &exitErr) || exitErr.ExitCode() != 3 {
 		t.Errorf("expected exit status 3 in error, got %v", r.Error)
+	}
+}
+
+func TestRun_ReportsEvents(t *testing.T) {
+	h := newHarness(t)
+	tasks := map[string]config.Task{
+		"bad":   sh("echo out; echo err >&2; exit 1"),
+		"after": logged("after", "bad"),
+	}
+	results := h.run(context.Background(), tasks, "after")
+
+	want := []string{"start bad", "finish bad", "finish after"}
+	if !slices.Equal(h.rec.events, want) {
+		t.Errorf("events = %v, want %v", h.rec.events, want)
+	}
+	if out := h.rec.output("bad"); out != "out\nerr\n" {
+		t.Errorf("output = %q, want stdout and stderr", out)
+	}
+	if r := results["bad"]; r.Start.IsZero() || r.Duration <= 0 {
+		t.Errorf("started task should have a start time and duration: %+v", r)
+	}
+	if r := results["after"]; !r.Start.IsZero() || r.ExitCode() != -1 {
+		t.Errorf("skipped task should have no start time or exit code: %+v", r)
 	}
 }
 
@@ -185,8 +275,8 @@ func TestRun_TaskContinueOnError(t *testing.T) {
 	results := h.run(context.Background(), tasks, "after")
 
 	assertStates(t, results, map[string]runner.TaskState{"flaky": runner.FailedAllowed, "after": runner.Succeeded})
-	if !strings.Contains(results["flaky"].Output, "flaky-output") {
-		t.Errorf("allowed failure output not kept: %q", results["flaky"].Output)
+	if out := h.rec.output("flaky"); !strings.Contains(out, "flaky-output") {
+		t.Errorf("allowed failure output not reported: %q", out)
 	}
 	if results["flaky"].Error == nil {
 		t.Error("allowed failure should keep its error")
@@ -308,6 +398,9 @@ func TestRun_Cache(t *testing.T) {
 	second := h.run(context.Background(), tasks, "ok")
 	if r := second["ok"]; r.State != runner.Succeeded || !r.Cached {
 		t.Fatalf("second run should be a cache hit: %+v", r)
+	}
+	if !slices.Equal(h.rec.events, []string{"finish ok"}) {
+		t.Errorf("a cache hit should be reported finished without starting, got %v", h.rec.events)
 	}
 
 	h.run(context.Background(), tasks, "bad")

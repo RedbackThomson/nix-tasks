@@ -353,6 +353,54 @@ Every task in the run ends in one of these states:
 | `-` | skipped | Never started: a dependency did not succeed, or the run stopped |
 | `⏹` | interrupted | Killed because the run was cancelled |
 
+#### Output
+
+How a run is shown depends on where its output goes:
+
+- **Terminal**: a live region shows each running task with the last few lines
+  of its output. Each task's result line is printed once, above the region,
+  when it finishes.
+- **CI (`CI` is set), `-v` or `--stream`**: every line of task output is
+  printed as it arrives, prefixed with the task name, between a start line
+  and a result line. Lines from parallel tasks never interleave.
+- **Piped (`nix-tasks run build | tee log`)**: a line when each task starts
+  and when it finishes; task output is held back and shown only for tasks
+  that fail.
+
+```
+▶ build
+▶ test
+✓ build (2.3s)
+✗ test (4.1s) (exit code 2)
+- deploy (skipped)
+
+deploy - (skipped)
+├─ build ✓ (2.3s)
+│  └─ generate ✓ (cached)
+└─ test ✗ (4.1s) (exit code 2)
+
+✗ test output:
+    --- FAIL: TestThing
+    FAIL
+
+Completed: 4 tasks (1 passed, 1 cached, 1 failed, 1 skipped)
+```
+
+Every mode ends with the same summary:
+
+1. The dependency tree of the target, each task with its marker, duration
+   (or `(cached)`) and, for a failure, its exit code. A task needed by
+   several others is drawn once; later appearances are marked with `*`.
+2. The output of each failed or allowed-failed task that was not already
+   shown: its last 50 lines. When a real failure's output is longer, the
+   full output is saved to a temp file whose path is printed; an allowed
+   failure (`continueOnError`) never writes one.
+3. The totals.
+
+`--raw` connects the target task directly to stdout and stderr and prints
+nothing else. If a dependency fails, its name and the tail of its output are
+printed to stderr.
+
 If exactly one task fails because its command exited non-zero, `nix-tasks run`
 exits with that command's exit code (also with `--raw`); any other failure
 exits 1.

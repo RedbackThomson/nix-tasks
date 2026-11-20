@@ -49,7 +49,7 @@ func (c *GraphCmd) Run(globals *Globals) error {
 		execSet[name] = true
 	}
 
-	printTree(graph, c.Task, execSet, nil)
+	printTree(graph, c.Task, execSet)
 
 	return nil
 }
@@ -60,36 +60,21 @@ type graphChild struct {
 	isAfter bool
 }
 
-// printTree prints an indented dependency tree rooted at target. If results
-// is non-nil, each node shows a status icon and duration; otherwise nodes show
-// their description. After-hooks in execSet are included and annotated.
-func printTree(graph *runner.TaskGraph, target string, execSet map[string]bool, results map[string]runner.TaskResult) {
+// printTree prints an indented dependency tree rooted at target, with each
+// task's description. After-hooks in execSet are included and annotated.
+func printTree(graph *runner.TaskGraph, target string, execSet map[string]bool) {
 	visited := make(map[string]bool)
-	printTreeNode(graph, target, 0, false, "", visited, execSet, results)
+	printTreeNode(graph, target, 0, false, "", visited, execSet)
 }
 
 // printTreeNode recursively prints a single node and its children. parentName
 // is the tree parent (used to avoid showing redundant edges for after-hooks).
-func printTreeNode(graph *runner.TaskGraph, name string, depth int, isAfter bool, parentName string, visited map[string]bool, execSet map[string]bool, results map[string]runner.TaskResult) {
+func printTreeNode(graph *runner.TaskGraph, name string, depth int, isAfter bool, parentName string, visited map[string]bool, execSet map[string]bool) {
 	duplicate := visited[name]
 	visited[name] = true
 
 	indent := strings.Repeat("  ", depth)
-	label := formatNodeLabel(graph, name, isAfter, duplicate, results)
-	fmt.Println(indent + label)
-
-	// Print failed task output inline when showing results
-	if results != nil {
-		if r, ok := results[name]; ok && showsOutput(r) {
-			tail, tmpFile := tailAndSave(r.Name, r.Output)
-			for _, line := range strings.Split(strings.TrimRight(tail, "\n"), "\n") {
-				fmt.Printf("%s    %s\n", indent, line)
-			}
-			if tmpFile != "" {
-				fmt.Printf("%s    %s\n", indent, ui.Muted("full output: "+tmpFile))
-			}
-		}
-	}
+	fmt.Println(indent + formatGraphLabel(graph, name, isAfter, duplicate))
 
 	if duplicate {
 		return
@@ -103,19 +88,11 @@ func printTreeNode(graph *runner.TaskGraph, name string, depth int, isAfter bool
 		if c.name == parentName {
 			continue
 		}
-		printTreeNode(graph, c.name, depth+1, c.isAfter, name, visited, execSet, results)
+		printTreeNode(graph, c.name, depth+1, c.isAfter, name, visited, execSet)
 	}
 }
 
-// formatNodeLabel builds the display label for a tree node.
-func formatNodeLabel(graph *runner.TaskGraph, name string, isAfter bool, duplicate bool, results map[string]runner.TaskResult) string {
-	if results != nil {
-		return formatResultLabel(name, isAfter, duplicate, results)
-	}
-	return formatGraphLabel(graph, name, isAfter, duplicate)
-}
-
-// formatGraphLabel builds a label for the graph command (no results).
+// formatGraphLabel builds the label for a tree node.
 func formatGraphLabel(graph *runner.TaskGraph, name string, isAfter bool, duplicate bool) string {
 	label := name
 	if isAfter {
@@ -127,39 +104,6 @@ func formatGraphLabel(graph *runner.TaskGraph, name string, isAfter bool, duplic
 	if duplicate {
 		label += " " + ui.Muted("*")
 	}
-	return label
-}
-
-// formatResultLabel builds a label for the run command (with results).
-func formatResultLabel(name string, isAfter bool, duplicate bool, results map[string]runner.TaskResult) string {
-	r, ok := results[name]
-
-	label := stateIcon(r.State) + " " + name
-
-	if isAfter {
-		label += " " + ui.Label("(after)")
-	}
-
-	if ok {
-		if r.Cached {
-			label += " " + ui.Muted("(cached)")
-		} else if r.Duration > 0 {
-			label += " " + ui.Muted(ui.FormatDuration(r.Duration))
-		}
-		switch r.State {
-		case runner.FailedAllowed:
-			label += " " + ui.Muted("(failure allowed)")
-		case runner.Skipped:
-			label += " " + ui.Muted("(skipped)")
-		case runner.Interrupted:
-			label += " " + ui.Muted("(interrupted)")
-		}
-	}
-
-	if duplicate {
-		label += " " + ui.Muted("*")
-	}
-
 	return label
 }
 

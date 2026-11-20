@@ -2,13 +2,14 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"os/exec"
 	"slices"
 	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
-	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
 // TaskState is the outcome of a task in a run
@@ -45,12 +46,23 @@ func (s TaskState) String() string {
 
 // TaskResult holds the result of a task execution
 type TaskResult struct {
-	Name     string
-	State    TaskState
-	Cached   bool
-	Error    error
+	Name   string
+	State  TaskState
+	Cached bool
+	Error  error
+	// Start is when the task began; zero for skipped tasks.
+	Start    time.Time
 	Duration time.Duration
-	Output   string // Buffered stdout/stderr (non-verbose mode only)
+}
+
+// ExitCode returns the exit status of the task's process, or -1 when the
+// task did not fail because a process exited non-zero.
+func (r TaskResult) ExitCode() int {
+	var exitErr *exec.ExitError
+	if errors.As(r.Error, &exitErr) && exitErr.ExitCode() > 0 {
+		return exitErr.ExitCode()
+	}
+	return -1
 }
 
 // Run executes target and everything it needs, starting each task as soon as
@@ -82,9 +94,13 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, target string) ([]
 	}
 
 	results := make(map[string]TaskResult, len(order))
+	finish := func(r TaskResult) {
+		results[r.Name] = r
+		e.reporter.TaskFinished(r)
+	}
 	var resolve func(r TaskResult)
 	resolve = func(r TaskResult) {
-		results[r.Name] = r
+		finish(r)
 		next := slices.Clone(dependents[r.Name])
 		slices.Sort(next)
 		for _, d := range next {
@@ -98,7 +114,7 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, target string) ([]
 				}
 				continue
 			}
-			resolve(e.skip(d))
+			resolve(skip(d))
 		}
 	}
 
@@ -113,9 +129,6 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, target string) ([]
 			name := ready[0]
 			ready = ready[1:]
 			running++
-			if e.options.Progress != nil {
-				e.options.Progress.RegisterTask(name)
-			}
 			task := graph.tasks[name]
 			go func() {
 				r := e.runOne(runCtx, name, task)
@@ -133,23 +146,19 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, target string) ([]
 		resolve(r)
 	}
 
+	for _, name := range order {
+		if _, ok := results[name]; !ok {
+			finish(skip(name))
+		}
+	}
 	out := make([]TaskResult, 0, len(order))
 	for _, name := range order {
-		r, ok := results[name]
-		if !ok {
-			r = e.skip(name)
-		}
-		out = append(out, r)
+		out = append(out, results[name])
 	}
 	return out, nil
 }
 
-// skip records a task that will not run
-func (e *Executor) skip(name string) TaskResult {
-	if e.options.Progress != nil {
-		e.options.Progress.RegisterTask(name)
-		e.options.Progress.TaskSkipped(name)
-	}
+func skip(name string) TaskResult {
 	return TaskResult{Name: name, State: Skipped}
 }
 
@@ -170,39 +179,14 @@ func (e *Executor) runOne(ctx context.Context, name string, task config.Task) Ta
 		state = Failed
 	}
 
-	var output string
-	if e.options.Progress != nil {
-		e.options.Progress.TaskFinished(name, progressStatus(state, cached), duration)
-		output = e.options.Progress.GetBuffer(name)
-	} else {
-		output = e.printer.GetBuffer(name)
-	}
-
 	return TaskResult{
 		Name:     name,
 		State:    state,
 		Cached:   cached,
 		Error:    err,
+		Start:    start,
 		Duration: duration,
-		Output:   output,
 	}
-}
-
-func progressStatus(state TaskState, cached bool) ui.TaskStatus {
-	switch state {
-	case Failed:
-		return ui.TaskFailed
-	case FailedAllowed:
-		return ui.TaskFailedAllowed
-	case Interrupted:
-		return ui.TaskInterrupted
-	case Skipped:
-		return ui.TaskSkipped
-	}
-	if cached {
-		return ui.TaskCached
-	}
-	return ui.TaskSuccess
 }
 
 // runTask executes a single task, answering from the cache when it can. Only

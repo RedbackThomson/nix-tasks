@@ -1,54 +1,18 @@
 package ui
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"sort"
-	"sync"
-	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
 )
 
-// Printer handles formatted output
-type Printer struct {
-	mu      sync.Mutex
-	buffers map[string]*bytes.Buffer
-}
+// Printer prints task and shell listings
+type Printer struct{}
 
 // NewPrinter creates a new printer
 func NewPrinter() *Printer {
-	return &Printer{
-		buffers: make(map[string]*bytes.Buffer),
-	}
-}
-
-// TaskBuffer returns a buffer for capturing task output
-func (p *Printer) TaskBuffer(name string) io.Writer {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	buf := &bytes.Buffer{}
-	p.buffers[name] = buf
-	return buf
-}
-
-// GetBuffer returns the buffered output for a task (empty if none or if verbose mode streamed it)
-func (p *Printer) GetBuffer(name string) string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if buf, ok := p.buffers[name]; ok {
-		return buf.String()
-	}
-	return ""
-}
-
-// FormatDuration formats a duration in a human-readable way
-func FormatDuration(d time.Duration) string {
-	if d < time.Second {
-		return fmt.Sprintf("(%dms)", d.Milliseconds())
-	}
-	return fmt.Sprintf("(%.1fs)", d.Seconds())
+	return &Printer{}
 }
 
 // PrintTaskList prints a formatted list of tasks
