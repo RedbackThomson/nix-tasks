@@ -9,25 +9,9 @@ import (
 )
 
 func TestDir(t *testing.T) {
-	// Save original env vars
-	origCache := os.Getenv("NIX_TASKS_CACHE_DIR")
-	origXDG := os.Getenv("XDG_CACHE_HOME")
-	defer func() {
-		if origCache != "" {
-			os.Setenv("NIX_TASKS_CACHE_DIR", origCache)
-		} else {
-			os.Unsetenv("NIX_TASKS_CACHE_DIR")
-		}
-		if origXDG != "" {
-			os.Setenv("XDG_CACHE_HOME", origXDG)
-		} else {
-			os.Unsetenv("XDG_CACHE_HOME")
-		}
-	}()
-
 	t.Run("uses NIX_TASKS_CACHE_DIR if set", func(t *testing.T) {
-		os.Setenv("NIX_TASKS_CACHE_DIR", "/custom/cache")
-		os.Unsetenv("XDG_CACHE_HOME")
+		t.Setenv("NIX_TASKS_CACHE_DIR", "/custom/cache")
+		t.Setenv("XDG_CACHE_HOME", "")
 
 		got := Dir()
 		if got != "/custom/cache" {
@@ -36,8 +20,8 @@ func TestDir(t *testing.T) {
 	})
 
 	t.Run("uses XDG_CACHE_HOME if NIX_TASKS_CACHE_DIR not set", func(t *testing.T) {
-		os.Unsetenv("NIX_TASKS_CACHE_DIR")
-		os.Setenv("XDG_CACHE_HOME", "/xdg/cache")
+		t.Setenv("NIX_TASKS_CACHE_DIR", "")
+		t.Setenv("XDG_CACHE_HOME", "/xdg/cache")
 
 		got := Dir()
 		want := "/xdg/cache/nix-tasks"
@@ -47,8 +31,8 @@ func TestDir(t *testing.T) {
 	})
 
 	t.Run("falls back to ~/.cache/nix-tasks", func(t *testing.T) {
-		os.Unsetenv("NIX_TASKS_CACHE_DIR")
-		os.Unsetenv("XDG_CACHE_HOME")
+		t.Setenv("NIX_TASKS_CACHE_DIR", "")
+		t.Setenv("XDG_CACHE_HOME", "")
 
 		got := Dir()
 		home, _ := os.UserHomeDir()
@@ -256,8 +240,7 @@ func TestComputeFingerprint(t *testing.T) {
 func TestStore(t *testing.T) {
 	// Use a temp directory for testing
 	tmpDir := t.TempDir()
-	os.Setenv("NIX_TASKS_CACHE_DIR", tmpDir)
-	defer os.Unsetenv("NIX_TASKS_CACHE_DIR")
+	t.Setenv("NIX_TASKS_CACHE_DIR", tmpDir)
 
 	store := NewStore("test-project")
 
@@ -308,7 +291,9 @@ func TestStore(t *testing.T) {
 
 	t.Run("clear removes entries", func(t *testing.T) {
 		fp := &Fingerprint{Hash: "clear-test"}
-		store.Store("cleartest", fp, true)
+		if err := store.Store("cleartest", fp, true); err != nil {
+			t.Fatal(err)
+		}
 
 		err := store.Clear()
 		if err != nil {
@@ -355,8 +340,7 @@ func TestProjectKey(t *testing.T) {
 
 func TestStats(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.Setenv("NIX_TASKS_CACHE_DIR", tmpDir)
-	defer os.Unsetenv("NIX_TASKS_CACHE_DIR")
+	t.Setenv("NIX_TASKS_CACHE_DIR", tmpDir)
 
 	store := NewStore("stats-test")
 
@@ -371,8 +355,11 @@ func TestStats(t *testing.T) {
 	})
 
 	t.Run("stats reflect stored entries", func(t *testing.T) {
-		store.Store("task1", &Fingerprint{Hash: "hash1"}, true)
-		store.Store("task2", &Fingerprint{Hash: "hash2"}, true)
+		for _, name := range []string{"task1", "task2"} {
+			if err := store.Store(name, &Fingerprint{Hash: "hash-" + name}, true); err != nil {
+				t.Fatal(err)
+			}
+		}
 
 		stats, err := store.Stats()
 		if err != nil {

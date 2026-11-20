@@ -11,7 +11,7 @@ func TestResolveColor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	tests := []struct {
 		name    string
