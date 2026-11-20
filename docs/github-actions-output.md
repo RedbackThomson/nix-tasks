@@ -12,12 +12,13 @@ on the job summary page.
 |-----------|--------|
 | `GITHUB_ACTIONS=true` and no `--output` flag | `github` |
 | `--output=github` | `github`, anywhere (useful for testing locally) |
-| `--output=stream` / `--output=plain` / `--output=tty` | that mode, even under GitHub Actions |
+| `--output=stream` / `--output=plain` / `--output=tty` / `-v` | that mode, even under GitHub Actions |
 
 In `github` mode colour is on even though stdout is not a TTY, because the
 GitHub log viewer renders ANSI colour. `NO_COLOR` still turns it off.
 
-The mode is a `TaskReporter` implementation alongside progress, stream and plain.
+The mode is a reporter (`ui.GitHubReporter`) alongside progress, stream and
+plain.
 
 ## 1. Colour-coded task prefixes
 
@@ -140,13 +141,21 @@ starts, so it can be folded into one group without conflicting with task output.
 nix-tasks: deploy · 6 tasks · -j 4
 ::group::Preparing 3 environments (4.8s)
 evaluated nixTasksConfig (1.9s)
-shell go-tools: cached environment (0.1s)
-shell lint: built with nix print-dev-env (2.6s)
-shell docker: cached environment (0.1s)
+environment for build, generate: cached environment (0.1s)
+environment for lint: built with nix print-dev-env (2.6s)
+environment for test: cached environment (0.1s)
 ::endgroup::
 ```
 
 Collapsed, this shows as one line: `▸ Preparing 3 environments (4.8s)`.
+
+Each task gets its own shell from its `deps`, so environments are named by
+the tasks that share them. A failed environment's error follows the list,
+wrapped in `stop-commands`, and only fails the tasks that use it. With no
+environments to prepare the group is `Loading configuration`. Only the
+github reporter prepares environments up front (it implements
+`runner.SetupReporter`); the other modes still prepare each one when its
+first task starts, so the live display is not held up.
 
 ## 6. Results section with groups
 
@@ -239,6 +248,41 @@ Annotations printed by the tools themselves (see section 1) are not counted
 in nix-tasks' budget, but GitHub's limit covers every annotation in the step. A
 step whose tools already emitted 10 errors shows none of nix-tasks' own; the
 failures are still in the Results section and the job summary.
+
+## Implementation notes
+
+Where the implementation differs from the sketches above:
+
+- Cache hits show `● vet cached` with no time saved: cache entries do not
+  record how long the task took.
+- Interrupted tasks (the first failure stops the run without
+  `--continue-on-error`) get `⏹ name interrupted · 2.0s` banners and Results
+  lines, and an `interrupted` count in the totals. They raise no annotation.
+- Workflow command properties are escaped as GitHub requires, so the titles
+  above are written `title=nix-tasks%3A lint failed`.
+- A failure that is not a non-zero exit (for example a broken environment)
+  shows its error at the end of its Results group and in its annotation and
+  summary row.
+- A job summary `<details>` block is titled `✗ lint output` when the whole
+  output fits in 50 lines and `✗ lint, last 50 lines` when it was cut.
+- A tool's workflow commands are found the way the GitHub runner finds them:
+  after leading whitespace, `::`, a command name with optional parameters,
+  and the next `::`. While a tool's `stop-commands` block is open GitHub
+  ignores every command in the step, other tasks' included, so nix-tasks
+  does not count groups opened then; a group another task leaves open in
+  that time is closed once the block is resumed.
+- Passing commands through means a tool's group also folds whatever other
+  tasks print while it is open, and a tool's `stop-commands` silences other
+  tasks' annotations until it resumes; that is how the same commands behave
+  in any step running tools in parallel.
+- Live output keeps the tool's own colour codes even when nix-tasks' colour
+  is off, like `--output=stream`; the Results replay strips them in that case.
+- With several targets (`nix-tasks run lint build`) the header and the job
+  summary title name all of them; prefixes, colours and the Results order
+  cover the whole execution set as for one target.
+- The Results order and the colour assignment come from the run plan the
+  runner reports before any task starts (`runner.PlanReporter`), which also
+  carries the labels.
 
 ## Decisions
 

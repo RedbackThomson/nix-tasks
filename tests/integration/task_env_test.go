@@ -124,6 +124,7 @@ func TestTaskEnv_MatchesNixDevelop(t *testing.T) {
 	}
 	develop := exec.CommandContext(ctx, "nix", "develop", string(drv)+"^*", "--command", "env", "-0")
 	develop.Dir = dir
+	develop.Env = testEnviron()
 	developData, err := develop.Output()
 	if err != nil {
 		t.Fatalf("nix develop: %v", err)

@@ -1,0 +1,20 @@
+{{define "table" -}}
+### nix-tasks: {{cell .Target}} {{.Marker}}
+
+| Task | Result | Duration | Notes |
+|------|--------|---------:|-------|
+{{range .Rows -}}
+| {{cell .Name}} | {{.Result}} | {{if .Timed}}{{seconds .Duration}}{{else}}—{{end}} | {{cell .Notes}} |
+{{end}}
+{{range .Totals}}{{if eq .Kind "failed"}}**{{.Text}}**{{else}}{{.Text}}{{end}} · {{end}}{{seconds .Elapsed}} total
+{{end}}
+
+{{- define "details"}}
+<details><summary>{{.Marker}} {{escape .Name}}{{if .Cut}}, last {{.Shown}} lines{{else}} output{{end}}</summary>
+
+{{.Fence}}text
+{{.Body}}
+{{.Fence}}
+
+</details>
+{{end}}

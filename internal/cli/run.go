@@ -71,6 +71,9 @@ func (c *RunCmd) Run(globals *Globals) error {
 		return err
 	}
 	slog.Debug("config loaded", "duration", time.Since(configStart), "tasks", len(cfg.Tasks))
+	if g, ok := reporter.(*ui.GitHubReporter); ok {
+		g.ConfigLoaded(time.Since(configStart))
+	}
 
 	if err := checkTasksExist(cfg, c.Tasks); err != nil {
 		return err
@@ -125,6 +128,8 @@ func (c *RunCmd) newReporter(globals *Globals) ui.Reporter {
 		return ui.NewRawReporter(c.Tasks[0], os.Stdout, os.Stderr)
 	}
 	switch globals.OutputMode() {
+	case OutputGitHub:
+		return ui.NewGitHubReporter(ui.GitHubOptions{Out: os.Stdout, SummaryPath: os.Getenv("GITHUB_STEP_SUMMARY")})
 	case OutputStream:
 		return ui.NewLineReporter(os.Stdout, true)
 	case OutputTTY:

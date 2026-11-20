@@ -44,7 +44,13 @@ go test -cover ./...
 
 # Test specific package
 go test ./internal/runner/...
+
+# Rewrite the GitHub output golden files after an intended change
+go test ./internal/ui -run GitHub -update
 ```
+
+Golden files live in `internal/ui/testdata/`; escape sequences are shown as
+`<params>` (e.g. `<1;31>` for bold red) so diffs are readable.
 
 ### Integration Tests
 
@@ -58,7 +64,10 @@ go test -tags=integration ./tests/integration/...
 go test -tags=integration ./tests/integration -run TestRun_SimpleTask
 ```
 
-Integration tests build the nix-tasks binary and test against real Nix flakes in `tests/integration/testdata/`.
+Integration tests build the nix-tasks binary and test against real Nix flakes in `tests/integration/testdata/`. The
+helpers drop `GITHUB_ACTIONS` and `GITHUB_STEP_SUMMARY` from the child's
+environment, so the suite checks the same output when it runs inside GitHub
+Actions; tests of the github output set them explicitly.
 
 ### Nix Library Tests
 

@@ -39,12 +39,7 @@ func runOutput(t *testing.T, dir, tmp string, env []string, args ...string) (str
 	defer cancel()
 	cmd := exec.CommandContext(ctx, nixTasksBinary(t), args...)
 	cmd.Dir = dir
-	for _, kv := range os.Environ() {
-		if k, _, _ := strings.Cut(kv, "="); k != "CI" && k != "NO_COLOR" && k != "TMPDIR" {
-			cmd.Env = append(cmd.Env, kv)
-		}
-	}
-	cmd.Env = append(cmd.Env, "NIX_TASKS_CACHE_DIR="+t.TempDir(), "TMPDIR="+tmp)
+	cmd.Env = append(testEnviron("CI", "NO_COLOR", "TMPDIR"), "NIX_TASKS_CACHE_DIR="+t.TempDir(), "TMPDIR="+tmp)
 	cmd.Env = append(cmd.Env, env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

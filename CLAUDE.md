@@ -272,7 +272,7 @@ internal/
     nix/                  # nix CLI wrapper (evaluator.go) and its errors (errors.go)
     runner/               # Dependency graph (graph.go) and task execution
     cache/                # Fingerprints (fingerprint.go) and the on-disk store (store.go)
-    ui/                   # Colours, run Reporters (progress, line, raw) and status printing
+    ui/                   # Colours, run Reporters (progress, line, raw, github) and status printing
     tui/                  # Bubbletea app (app.go)
 lib/                      # Nix library: module options (module.nix), outputs (eval.nix), builders, Make compat, tests
 ```
@@ -417,7 +417,7 @@ func (c *counter) add(name string) {
 // Globals contains flags available to all commands
 type Globals struct {
 	Verbose bool   `short:"v" aliases:"stream" help:"Same as --output=stream"`
-	Output  string `enum:"auto,tty,stream,plain" default:"auto" help:"How run shows tasks: ..."`
+	Output  string `enum:"auto,tty,stream,plain,github" default:"auto" help:"How run shows tasks: ..."`
 	Color   string `enum:"auto,always,never" default:"auto" help:"Colour output: auto, always or never. auto colours a terminal unless NO_COLOR is set"`
 	Debug   bool   `help:"Show debug information including Nix commands"`
 	Flake   string `short:"f" completion-predictor:"dir" help:"Path to flake" default:"."`
@@ -464,9 +464,9 @@ func (c *RunCmd) Run(globals *Globals) error {
 nothing else, while `Accent`, `Label` and `Muted` decorate. Each role is one of
 the 16 standard terminal colours, so the terminal's theme applies, and the
 TUI's lipgloss styles use the same roles. Whether colour is on is
-decided once at startup (`ui.ResolveColor` from `--color`, `NO_COLOR` and
-whether stdout is a terminal, then `ui.SetColor`), so callers never check
-the terminal themselves:
+decided once at startup (`Globals.ColorEnabled` from `--color`, `NO_COLOR`,
+whether stdout is a terminal and whether the output mode is `github`, then
+`ui.SetColor`), so callers never check the terminal themselves:
 
 ```go
 fmt.Printf("%s %s\n", ui.Success("✓"), taskName)
@@ -477,7 +477,9 @@ fmt.Printf("%s %s\n", ui.Failure("✗"), taskName)
 talks to a `ui.Reporter`; `RunCmd.newReporter` (`internal/cli/run.go`) picks
 one: `RawReporter` for `--raw`, otherwise by `Globals.OutputMode()`
 (`internal/cli/output.go`), which resolves `--output`, `-v` and the
-environment: a streaming `LineReporter` for `stream` (`-v`, or `CI` set), the
+environment: the `GitHubReporter` for `github` (`GITHUB_ACTIONS=true`; see
+`docs/github-actions-output.md`), a streaming `LineReporter` for `stream`
+(`-v`, or `CI` set), the
 `ProgressReporter` for `tty` (a terminal), and for `plain` a `LineReporter`
 that prints start and finish lines and shows output only for failed tasks.
 

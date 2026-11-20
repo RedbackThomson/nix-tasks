@@ -83,7 +83,7 @@ func runNixTasksInDir(t *testing.T, binary, workDir, cacheDir string, args ...st
 	cmd.Dir = workDir
 	// Tasks run in the flake root, which is shared testdata, so fixtures
 	// write their logs to the per-test workDir named here instead.
-	cmd.Env = append(cmd.Environ(), "NIX_TASKS_CACHE_DIR="+cacheDir, "NIX_TASKS_TEST_LOG_DIR="+workDir)
+	cmd.Env = append(testEnviron(), "NIX_TASKS_CACHE_DIR="+cacheDir, "NIX_TASKS_TEST_LOG_DIR="+workDir)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -91,6 +91,20 @@ func runNixTasksInDir(t *testing.T, binary, workDir, cacheDir string, args ...st
 
 	err := cmd.Run()
 	return stdout.String(), stderr.String(), err
+}
+
+// testEnviron returns this process's environment without the variables
+// GitHub Actions sets to switch nix-tasks to its github output, plus any
+// named in drop, so the suite checks the same output wherever it runs.
+func testEnviron(drop ...string) []string {
+	drop = append(drop, "GITHUB_ACTIONS", "GITHUB_STEP_SUMMARY")
+	var env []string
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); !slices.Contains(drop, k) {
+			env = append(env, kv)
+		}
+	}
+	return env
 }
 
 var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
