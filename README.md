@@ -271,6 +271,7 @@ Commands:
 
 Global Flags:
   -v, --verbose    Show task output
+  --color          Colour output: auto (default), always or never
   --debug          Show debug information
   -f, --flake      Path to flake (default: ".")
 ```
@@ -355,6 +356,9 @@ Every task in the run ends in one of these states:
 If exactly one task fails because its command exited non-zero, `nix-tasks run`
 exits with that command's exit code (also with `--raw`); any other failure
 exits 1.
+
+Output is coloured only when stdout is a terminal and `NO_COLOR` is not set;
+`--color=always` or `--color=never` overrides that for any command.
 
 Ctrl-C (or SIGTERM) stops the run: each running task's whole process tree is
 sent SIGTERM, anything still alive 5 seconds later is killed, and `nix-tasks

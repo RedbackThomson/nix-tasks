@@ -269,37 +269,37 @@ func (pd *ProgressDisplay) render() {
 			spinner := spinnerFrames[pd.spinnerIdx]
 			elapsed := time.Since(ts.startTime)
 			fmt.Fprintf(&buf, "\033[2K%s %s %s\n",
-				Yellow(spinner), name, Gray(FormatDuration(elapsed)))
+				Accent(spinner), name, Muted(FormatDuration(elapsed)))
 			rows++
 
 			for _, l := range ts.lines.Lines() {
 				truncated := truncateLine(l, pd.termWidth()-4)
-				fmt.Fprintf(&buf, "\033[2K    %s\n", Gray(truncated))
+				fmt.Fprintf(&buf, "\033[2K    %s\n", Muted(truncated))
 				rows++
 			}
 
 		case TaskSuccess:
-			pd.renderTaskLine(&buf, Green("✓"), name, Gray(FormatDuration(ts.duration)))
+			pd.renderTaskLine(&buf, Success("✓"), name, Muted(FormatDuration(ts.duration)))
 			rows++
 
 		case TaskCached:
-			pd.renderTaskLine(&buf, Green("✓"), name, Gray("(cached)"))
+			pd.renderTaskLine(&buf, Success("✓"), name, Muted("(cached)"))
 			rows++
 
 		case TaskFailed:
-			pd.renderTaskLine(&buf, Red("✗"), name, Gray(FormatDuration(ts.duration)))
+			pd.renderTaskLine(&buf, Failure("✗"), name, Muted(FormatDuration(ts.duration)))
 			rows++
 
 		case TaskFailedAllowed:
-			pd.renderTaskLine(&buf, Yellow("!"), name, Gray(FormatDuration(ts.duration)+" (failure allowed)"))
+			pd.renderTaskLine(&buf, Warning("!"), name, Muted(FormatDuration(ts.duration)+" (failure allowed)"))
 			rows++
 
 		case TaskSkipped:
-			pd.renderTaskLine(&buf, Gray("-"), name, Gray("(skipped)"))
+			pd.renderTaskLine(&buf, Muted("-"), name, Muted("(skipped)"))
 			rows++
 
 		case TaskInterrupted:
-			pd.renderTaskLine(&buf, Yellow("⏹"), name, Gray("(interrupted)"))
+			pd.renderTaskLine(&buf, Warning("⏹"), name, Muted("(interrupted)"))
 			rows++
 		}
 

@@ -8,6 +8,7 @@ import (
 	"github.com/alecthomas/kong"
 
 	"github.com/redbackthomson/nix-tasks/internal/cli"
+	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
 func main() {
@@ -24,6 +25,7 @@ func main() {
 		})))
 	}
 
+	ui.SetColor(ui.ResolveColor(ui.ColorMode(rootCmd.Globals.Color), os.Stdout))
 	ctx.FatalIfErrorf(rootCmd.Globals.ResolveFlake())
 
 	err := ctx.Run(&rootCmd.Globals)

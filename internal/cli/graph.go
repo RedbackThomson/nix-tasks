@@ -86,7 +86,7 @@ func printTreeNode(graph *runner.TaskGraph, name string, depth int, isAfter bool
 				fmt.Printf("%s    %s\n", indent, line)
 			}
 			if tmpFile != "" {
-				fmt.Printf("%s    %s\n", indent, ui.Gray("full output: "+tmpFile))
+				fmt.Printf("%s    %s\n", indent, ui.Muted("full output: "+tmpFile))
 			}
 		}
 	}
@@ -119,13 +119,13 @@ func formatNodeLabel(graph *runner.TaskGraph, name string, isAfter bool, duplica
 func formatGraphLabel(graph *runner.TaskGraph, name string, isAfter bool, duplicate bool) string {
 	label := name
 	if isAfter {
-		label += " " + ui.Yellow("(after)")
+		label += " " + ui.Label("(after)")
 	}
 	if task, ok := graph.Task(name); ok && task.Description != "" {
-		label += " " + ui.Gray(task.Description)
+		label += " " + ui.Muted(task.Description)
 	}
 	if duplicate {
-		label += " " + ui.Gray("*")
+		label += " " + ui.Muted("*")
 	}
 	return label
 }
@@ -137,27 +137,27 @@ func formatResultLabel(name string, isAfter bool, duplicate bool, results map[st
 	label := stateIcon(r.State) + " " + name
 
 	if isAfter {
-		label += " " + ui.Yellow("(after)")
+		label += " " + ui.Label("(after)")
 	}
 
 	if ok {
 		if r.Cached {
-			label += " " + ui.Gray("(cached)")
+			label += " " + ui.Muted("(cached)")
 		} else if r.Duration > 0 {
-			label += " " + ui.Gray(ui.FormatDuration(r.Duration))
+			label += " " + ui.Muted(ui.FormatDuration(r.Duration))
 		}
 		switch r.State {
 		case runner.FailedAllowed:
-			label += " " + ui.Gray("(failure allowed)")
+			label += " " + ui.Muted("(failure allowed)")
 		case runner.Skipped:
-			label += " " + ui.Gray("(skipped)")
+			label += " " + ui.Muted("(skipped)")
 		case runner.Interrupted:
-			label += " " + ui.Gray("(interrupted)")
+			label += " " + ui.Muted("(interrupted)")
 		}
 	}
 
 	if duplicate {
-		label += " " + ui.Gray("*")
+		label += " " + ui.Muted("*")
 	}
 
 	return label
