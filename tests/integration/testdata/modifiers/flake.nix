@@ -2,8 +2,8 @@
   description = "Modifiers test fixture - task modifier helpers";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-tasks.url = "path:../../../..";
+    nixpkgs.follows = "nix-tasks/nixpkgs";
   };
 
   outputs = { self, nixpkgs, nix-tasks }:

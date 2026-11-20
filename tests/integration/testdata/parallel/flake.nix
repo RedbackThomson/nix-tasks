@@ -2,8 +2,8 @@
   description = "Parallel test fixture - tasks that can run in parallel";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-tasks.url = "path:../../../..";
+    nixpkgs.follows = "nix-tasks/nixpkgs";
   };
 
   outputs = { self, nixpkgs, nix-tasks }:

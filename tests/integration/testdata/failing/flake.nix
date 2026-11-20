@@ -2,8 +2,8 @@
   description = "Failing test fixture - tasks that fail for error handling tests";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-tasks.url = "path:../../../..";
+    nixpkgs.follows = "nix-tasks/nixpkgs";
   };
 
   outputs = { self, nixpkgs, nix-tasks }:
