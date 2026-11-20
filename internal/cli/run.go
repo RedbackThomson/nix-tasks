@@ -167,10 +167,12 @@ func (c *RunCmd) Run(globals *Globals) error {
 		}
 	}
 
-	// Return error if any task failed
 	for _, r := range results {
 		if !r.Success && !errors.Is(r.Error, context.Canceled) {
-			return fmt.Errorf("one or more tasks failed")
+			return &ExitCodeError{
+				Code: failureExitCode(results),
+				Err:  errors.New("one or more tasks failed"),
+			}
 		}
 	}
 

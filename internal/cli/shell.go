@@ -3,8 +3,10 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
+	"syscall"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
@@ -39,51 +41,36 @@ func (c *ShellCmd) Run(globals *Globals) error {
 		return fmt.Errorf("shell not found: %s\navailable shells: %s", shellName, availableShells(cfg.DevShells))
 	}
 
-	// Build the shell attribute
-	system := nix.CurrentSystem()
-	shellAttr := nix.DevShellAttr(system, shellName)
-
-	if c.Command != "" {
-		// Run a single command in the shell
-		return runShellCommand(ctx, eval, shellAttr, c.Command, globals.Debug)
-	}
-
-	// Launch interactive shell
-	return runInteractiveShell(ctx, eval, shellAttr, globals.Debug)
+	shellAttr := nix.DevShellAttr(nix.CurrentSystem(), shellName)
+	return execNix(developArgs(eval.FlakePath(), shellAttr, c.Command))
 }
 
-// runInteractiveShell launches an interactive nix develop shell
-func runInteractiveShell(ctx context.Context, eval *nix.Evaluator, shellAttr string, debug bool) error {
-	expr := fmt.Sprintf("%s#%s", eval.FlakePath(), shellAttr)
-	args := []string{"develop", expr}
-
-	if debug {
-		fmt.Printf("Running: nix %v\n", args)
+// developArgs returns the nix argv (including argv[0]) for entering a shell,
+// or for running command in it when command is non-empty.
+func developArgs(flakePath, shellAttr, command string) []string {
+	args := []string{"nix", "develop", fmt.Sprintf("%s#%s", flakePath, shellAttr)}
+	if command != "" {
+		args = append(args, "--command", "bash", "-c", command)
 	}
-
-	cmd := exec.CommandContext(ctx, "nix", args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	return cmd.Run()
+	return args
 }
 
-// runShellCommand runs a command inside the shell and exits
-func runShellCommand(ctx context.Context, eval *nix.Evaluator, shellAttr, command string, debug bool) error {
-	expr := fmt.Sprintf("%s#%s", eval.FlakePath(), shellAttr)
-	args := []string{"develop", expr, "--command", "bash", "-c", command}
-
-	if debug {
-		fmt.Printf("Running: nix %v\n", args)
+// execNix replaces this process with nix so exit codes, signals and job
+// control behave exactly as if the user had run nix develop directly.
+func execNix(args []string) error {
+	path, err := exec.LookPath("nix")
+	if err != nil {
+		return fmt.Errorf("nix not found: %w", err)
 	}
 
-	cmd := exec.CommandContext(ctx, "nix", args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	slog.Debug("exec", "path", path, "args", args)
+	_ = os.Stdout.Sync()
+	_ = os.Stderr.Sync()
 
-	return cmd.Run()
+	if err := syscall.Exec(path, args, os.Environ()); err != nil {
+		return fmt.Errorf("failed to exec %s: %w", path, err)
+	}
+	return nil
 }
 
 // availableShells returns a comma-separated list of available shell names

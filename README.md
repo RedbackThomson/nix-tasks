@@ -325,6 +325,10 @@ $ nix-tasks run build --no-cache
 $ nix-tasks run build --stream
 ```
 
+If exactly one task fails because its command exited non-zero, `nix-tasks run`
+exits with that command's exit code (also with `--raw`); any other failure
+exits 1.
+
 ### Development Shells
 
 ```bash
@@ -337,6 +341,10 @@ $ nix-tasks shell ci
 # Run a command in a shell without entering it
 $ nix-tasks shell ci --command "go version"
 ```
+
+`nix-tasks shell` replaces itself with `nix develop`, so the shell's (or the
+command's) exit code, signals and job control behave exactly as with
+`nix develop`.
 
 ### Caching
 
