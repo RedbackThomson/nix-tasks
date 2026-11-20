@@ -2,30 +2,17 @@ package tui
 
 import (
 	"fmt"
-	"os/exec"
 	"sort"
-	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
-// Styles for the TUI
-var (
-	titleStyle           = lipgloss.NewStyle().Bold(true)
-	sectionStyle         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.ANSIColor(ui.AccentColor))
-	sectionInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(ui.MutedColor))
-	selectedStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.ANSIColor(ui.AccentColor))
-	normalStyle          = lipgloss.NewStyle()
-	descStyle            = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(ui.MutedColor))
-	helpStyle            = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(ui.MutedColor))
-	cursorStyle          = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.ANSIColor(ui.AccentColor))
-)
-
-// Mode represents the current section being viewed
+// Mode is the list being shown.
 type Mode int
 
 const (
@@ -33,230 +20,200 @@ const (
 	ShellMode
 )
 
-// Model is the Bubbletea model for the TUI
+// Options configures the TUI.
+type Options struct {
+	// Load evaluates the flake's configuration. It runs while the UI shows a
+	// spinner, so it may be slow.
+	Load func() (*config.Config, error)
+	// FlakePath is shown while the configuration loads.
+	FlakePath string
+	// Executable and Args are the nix-tasks binary and global flags used to
+	// run tasks and enter shells, so they behave as they would from the
+	// command line.
+	Executable string
+	Args       []string
+}
+
+// Model is the Bubble Tea model for the TUI.
 type Model struct {
-	config    *config.Config
-	tasks     []string
-	shells    []string
-	cursor    int
-	mode      Mode
-	width     int
-	height    int
-	flakePath string
-	quitting  bool
+	opts Options
+
+	loading bool
+	loadErr error
+	spinner int
+
+	config *config.Config
+	tasks  []string
+	shells []string
+
+	mode   Mode
+	cursor int
+	offset int
+	width  int
+	height int
+
+	showHelp bool
+	status   string
 }
 
-// Tasks returns the list of task names
-func (m Model) Tasks() []string {
-	return m.tasks
+type configLoadedMsg struct {
+	config *config.Config
+	err    error
 }
 
-// Shells returns the list of shell names
-func (m Model) Shells() []string {
-	return m.shells
+type spinnerTickMsg struct{}
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+const spinnerInterval = 100 * time.Millisecond
+
+// New returns a model that starts loading the configuration when it runs.
+func New(opts Options) Model {
+	return Model{opts: opts, loading: true}
 }
 
-// Cursor returns the current cursor position
-func (m Model) Cursor() int {
-	return m.cursor
-}
-
-// CurrentMode returns the current mode (TaskMode or ShellMode)
-func (m Model) CurrentMode() Mode {
-	return m.mode
-}
-
-// NewModel creates a new TUI model
-func NewModel(cfg *config.Config, flakePath string) Model {
-	// Sort task names for consistent display
-	tasks := make([]string, 0, len(cfg.Tasks))
-	for name := range cfg.Tasks {
-		tasks = append(tasks, name)
-	}
-	sort.Strings(tasks)
-
-	// Sort shell names for consistent display
-	shells := make([]string, 0, len(cfg.DevShells))
-	for name := range cfg.DevShells {
-		shells = append(shells, name)
-	}
-	sort.Strings(shells)
-
-	return Model{
-		config:    cfg,
-		tasks:     tasks,
-		shells:    shells,
-		mode:      TaskMode,
-		flakePath: flakePath,
-	}
-}
-
-// Init implements tea.Model
 func (m Model) Init() tea.Cmd {
-	return nil
+	return tea.Batch(m.loadConfig, spinnerTick())
 }
 
-// Update implements tea.Model
+func (m Model) loadConfig() tea.Msg {
+	cfg, err := m.opts.Load()
+	return configLoadedMsg{config: cfg, err: err}
+}
+
+func spinnerTick() tea.Cmd {
+	return tea.Tick(spinnerInterval, func(time.Time) tea.Msg { return spinnerTickMsg{} })
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "q", "ctrl+c", "esc":
-			m.quitting = true
-			return m, tea.Quit
-
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-
-		case "down", "j":
-			max := m.maxCursor()
-			if m.cursor < max {
-				m.cursor++
-			}
-
-		case "tab":
-			m.switchMode()
-
-		case "enter", "r":
-			return m, m.runSelected()
+	case configLoadedMsg:
+		m.loading = false
+		if msg.err != nil {
+			m.loadErr = msg.err
+			return m, nil
 		}
+		m.setConfig(msg.config)
+		return m, nil
+
+	case spinnerTickMsg:
+		if !m.loading {
+			return m, nil
+		}
+		m.spinner = (m.spinner + 1) % len(spinnerFrames)
+		return m, spinnerTick()
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-	}
+		m.scrollToCursor()
+		return m, nil
 
+	case runFinishedMsg:
+		m.status = runStatus(msg)
+		return m, nil
+
+	case shellFinishedMsg:
+		m.status = shellStatus(msg)
+		return m, nil
+
+	case tea.KeyPressMsg:
+		return m.handleKey(msg)
+	}
 	return m, nil
 }
 
-// View implements tea.Model
-func (m Model) View() tea.View {
-	v := tea.NewView(m.render())
-	v.AltScreen = true
-	return v
+func (m *Model) setConfig(cfg *config.Config) {
+	m.config = cfg
+	m.tasks = sortedKeys(cfg.Tasks)
+	m.shells = sortedKeys(cfg.DevShells)
 }
 
-func (m Model) render() string {
-	if m.quitting {
-		return ""
+func sortedKeys[V any](items map[string]V) []string {
+	keys := make([]string, 0, len(items))
+	for k := range items {
+		keys = append(keys, k)
 	}
-
-	var b strings.Builder
-
-	// Title
-	b.WriteString(titleStyle.Render("nix-tasks"))
-	b.WriteString("\n\n")
-
-	// Tasks section
-	m.renderTasksSection(&b)
-	b.WriteString("\n")
-
-	// Shells section
-	m.renderShellsSection(&b)
-	b.WriteString("\n")
-
-	// Help
-	b.WriteString(helpStyle.Render("[j/k] navigate  [tab] switch section  [enter/r] run  [q] quit"))
-	b.WriteString("\n")
-
-	return b.String()
+	sort.Strings(keys)
+	return keys
 }
 
-func (m Model) renderTasksSection(b *strings.Builder) {
-	// Section header
-	header := "Tasks"
-	if m.mode == TaskMode {
-		b.WriteString(sectionStyle.Render(header))
-	} else {
-		b.WriteString(sectionInactiveStyle.Render(header))
+func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	key := msg.String()
+	if key == "ctrl+c" {
+		return m, tea.Quit
 	}
-	b.WriteString("\n")
-
-	if len(m.tasks) == 0 {
-		b.WriteString(descStyle.Render("  No tasks defined"))
-		b.WriteString("\n")
-		return
-	}
-
-	for i, name := range m.tasks {
-		task := m.config.Tasks[name]
-
-		// Cursor
-		cursor := "  "
-		style := normalStyle
-		if m.mode == TaskMode && i == m.cursor {
-			cursor = cursorStyle.Render("> ")
-			style = selectedStyle
+	if m.loading || m.loadErr != nil {
+		if key == "q" {
+			return m, tea.Quit
 		}
-
-		// Task name
-		line := cursor + style.Render(name)
-
-		// Description
-		if task.Description != "" {
-			desc := descStyle.Render(" - " + task.Description)
-			line += desc
-		}
-
-		b.WriteString(line)
-		b.WriteString("\n")
+		return m, nil
 	}
+	if m.showHelp {
+		switch key {
+		case "?", "esc", "q":
+			m.showHelp = false
+		}
+		return m, nil
+	}
+
+	switch key {
+	case "q":
+		return m, tea.Quit
+	case "?":
+		m.showHelp = true
+	case "up", "k":
+		m.moveCursor(-1)
+	case "down", "j":
+		m.moveCursor(1)
+	case "pgup", "ctrl+b":
+		m.moveCursor(-m.listHeight())
+	case "pgdown", "ctrl+f":
+		m.moveCursor(m.listHeight())
+	case "home":
+		m.moveCursor(-len(m.visible()))
+	case "end":
+		m.moveCursor(len(m.visible()))
+	case "tab", "shift+tab":
+		m.switchMode()
+	case "enter", "r":
+		return m, m.runSelected()
+	}
+	return m, nil
 }
 
-func (m Model) renderShellsSection(b *strings.Builder) {
-	// Section header
-	header := "Dev Shells"
+// visible returns the names in the active list.
+func (m Model) visible() []string {
 	if m.mode == ShellMode {
-		b.WriteString(sectionStyle.Render(header))
-	} else {
-		b.WriteString(sectionInactiveStyle.Render(header))
+		return m.shells
 	}
-	b.WriteString("\n")
-
-	if len(m.shells) == 0 {
-		b.WriteString(descStyle.Render("  No shells defined"))
-		b.WriteString("\n")
-		return
-	}
-
-	for i, name := range m.shells {
-		shell := m.config.DevShells[name]
-
-		// Cursor
-		cursor := "  "
-		style := normalStyle
-		if m.mode == ShellMode && i == m.cursor {
-			cursor = cursorStyle.Render("> ")
-			style = selectedStyle
-		}
-
-		// Shell name
-		line := cursor + style.Render(name)
-
-		// Extends info
-		if shell.Extends != "" {
-			desc := descStyle.Render(" (extends " + shell.Extends + ")")
-			line += desc
-		}
-
-		b.WriteString(line)
-		b.WriteString("\n")
-	}
+	return m.tasks
 }
 
-func (m Model) maxCursor() int {
-	if m.mode == TaskMode {
-		if len(m.tasks) == 0 {
-			return 0
-		}
-		return len(m.tasks) - 1
+func (m Model) selected() (string, bool) {
+	items := m.visible()
+	if m.cursor < 0 || m.cursor >= len(items) {
+		return "", false
 	}
-	if len(m.shells) == 0 {
-		return 0
+	return items[m.cursor], true
+}
+
+func (m *Model) moveCursor(delta int) {
+	m.cursor = max(0, min(m.cursor+delta, len(m.visible())-1))
+	m.scrollToCursor()
+}
+
+// scrollToCursor moves the list's window just enough to keep the cursor on
+// screen.
+func (m *Model) scrollToCursor() {
+	rows := m.listHeight()
+	if m.cursor < m.offset {
+		m.offset = m.cursor
 	}
-	return len(m.shells) - 1
+	if m.cursor >= m.offset+rows {
+		m.offset = m.cursor - rows + 1
+	}
+	m.offset = max(0, min(m.offset, len(m.visible())-rows))
 }
 
 func (m *Model) switchMode() {
@@ -266,45 +223,34 @@ func (m *Model) switchMode() {
 		m.mode = TaskMode
 	}
 	m.cursor = 0
+	m.offset = 0
 }
 
 func (m Model) runSelected() tea.Cmd {
-	if m.mode == TaskMode && len(m.tasks) > 0 {
-		taskName := m.tasks[m.cursor]
-		return tea.ExecProcess(
-			exec.Command("nix-tasks", "-f", m.flakePath, "run", taskName),
-			func(err error) tea.Msg {
-				return taskFinishedMsg{err: err}
-			},
-		)
-	} else if m.mode == ShellMode && len(m.shells) > 0 {
-		shellName := m.shells[m.cursor]
-		return tea.ExecProcess(
-			exec.Command("nix-tasks", "-f", m.flakePath, "shell", shellName),
-			func(err error) tea.Msg {
-				return shellFinishedMsg{err: err}
-			},
-		)
+	name, ok := m.selected()
+	if !ok {
+		return nil
 	}
-	return nil
+	if m.mode == ShellMode {
+		return m.enterShell(name)
+	}
+	return m.runTasks([]string{name})
 }
 
-type taskFinishedMsg struct {
-	err error
+func (m Model) View() tea.View {
+	v := tea.NewView(m.render())
+	v.AltScreen = true
+	return v
 }
 
-type shellFinishedMsg struct {
-	err error
-}
-
-// Run starts the TUI
-func Run(cfg *config.Config, flakePath string) error {
-	model := NewModel(cfg, flakePath)
-	p := tea.NewProgram(model)
-
-	if _, err := p.Run(); err != nil {
+// Run shows the TUI until the user quits.
+func Run(opts Options) error {
+	var progOpts []tea.ProgramOption
+	if !ui.ColorEnabled() {
+		progOpts = append(progOpts, tea.WithColorProfile(colorprofile.Ascii))
+	}
+	if _, err := tea.NewProgram(New(opts), progOpts...).Run(); err != nil {
 		return fmt.Errorf("error running TUI: %w", err)
 	}
-
 	return nil
 }

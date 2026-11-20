@@ -288,21 +288,28 @@ When you run `nix-tasks` without arguments in a terminal, it launches an interac
 ```bash
 $ nix-tasks
 
-nix-tasks
+nix-tasks  Tasks (3)  Dev Shells (2)
+> build  Build the application
+  deploy  Deploy to staging
+  test  Run tests
 
-Tasks
-> build - Build the application
-  test - Run tests
-  deploy - Deploy to staging
-
-Dev Shells
-  default
-  ci
-
-[j/k] navigate  [tab] switch section  [enter/r] run  [q] quit
+✓ build passed · 2.3s
+enter run · tab switch list · ? help · q quit
 ```
 
-Navigate with `j/k` or arrow keys, `tab` to switch between tasks and shells, and `enter` to run.
+The UI appears straight away and evaluates the flake in the background; if
+evaluation fails, the error is shown in the UI. Move with `j/k` or the arrow
+keys (the list scrolls to fit the terminal), switch between tasks and dev
+shells with `tab`, and press `?` to see every key.
+
+`enter` on a task hands the terminal to `nix-tasks run <task>`, so the run
+shows its usual progress output; when it finishes, press any key to return.
+The status bar then shows how it ended (`✓ build passed · 2.3s`,
+`✗ build failed · exit 1 · 3.1s` or `⏹ build interrupted`). `enter` on a dev
+shell starts `nix-tasks shell <name>` and returns to the TUI when you exit the
+shell. Both run the same nix-tasks binary as the TUI, with its `-f`, `-v`,
+`--debug` and `--color` flags. With `--debug`, log lines from loading the
+configuration are printed after the TUI exits.
 
 ### Running Tasks
 
