@@ -539,23 +539,24 @@ goimports -w .
 
 ### Linting
 
-Use golangci-lint with these enabled linters:
+`.golangci.yml` is in the golangci-lint v2 format, which the dev shell's
+golangci-lint needs. It enables these linters and formatters and also lints
+the integration tests:
 
 ```yaml
-# .golangci.yml
+version: "2"
+run:
+  build-tags: [integration]
 linters:
-  enable:
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gofmt
-    - goimports
+  default: none
+  enable: [errcheck, govet, ineffassign, staticcheck, unused]
+formatters:
+  enable: [gofmt, goimports]
 ```
 
-Run with:
+`staticcheck` runs all its checks, including the quickfix (`QF`) and style
+(`ST`) ones, except `ST1000`: a doc comment on every package would go against
+keeping comments for the why. Run with:
 
 ```bash
 golangci-lint run ./...
