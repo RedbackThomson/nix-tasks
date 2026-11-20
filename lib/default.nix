@@ -20,7 +20,8 @@ let
       # Build tasks are serialized without their derivation so that listing
       # tasks never instantiates it; the CLI builds them via nixTasksBuilds.
       serializedTasks = lib.mapAttrs (name: task:
-        if isBuild task then builtins.removeAttrs task [ "derivation" ] else task
+        builtins.addErrorContext "while evaluating nix-tasks task '${name}'"
+          (if isBuild task then builtins.removeAttrs task [ "derivation" ] else task)
       ) validated.tasks;
     in {
       # Config for JSON export to Go

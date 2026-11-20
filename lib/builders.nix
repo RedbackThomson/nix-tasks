@@ -12,14 +12,19 @@ rec {
     env ? {},
     workingDir ? null,
     inputs ? [],
-    outputs ? {},
     continueOnError ? false,
     noCache ? false,
     ...
-  }: {
-    type = "shell";
-    inherit description deps depends after commands script env workingDir inputs outputs continueOnError noCache;
-  };
+  }@args:
+    # Builders accept unknown arguments, so without this check `outputs`
+    # would be dropped silently and users would assume it does something.
+    if args ? outputs then
+      throw ("nix-tasks: shell task${lib.optionalString (name != null) " '${name}'"} sets `outputs`, which shell tasks do not support. "
+        + "Remove it; use `inputs` to control caching, or a build task (mkGoTask or `derivation`) to produce outputs linked under .nix-tasks/.")
+    else {
+      type = "shell";
+      inherit description deps depends after commands script env workingDir inputs continueOnError noCache;
+    };
 
   # Backward compatibility: mkTask becomes mkShellTask
   mkTask = mkShellTask;
