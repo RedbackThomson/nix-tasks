@@ -526,5 +526,8 @@ blob storage can be added later without changing the key.
   set `cache`.
 - Entries record each build-task dependency's drvPath (`detail.upstreamDrvs`),
   so `--explain` reports `upstream changed: tool (derivation)` when it changed.
+- `--explain` also reports tasks that ran without the cache (`not cached —
+  <reason>`), `--force` runs, skipped tasks, and a `not stored: <reason>` line
+  for runs whose result was not stored.
 - `cache stats` reports "last hit" from a `lastHit` entry field set only by
   hits; `lastUsed` also moves on stores.
