@@ -9,20 +9,37 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
 	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
-// ExecutorOptions configures task execution
-type ExecutorOptions struct {
+// Nix is what the runner needs from Nix: commands that run a script in a
+// task's dev shell and that build a flake attribute. *nix.Evaluator
+// satisfies it.
+type Nix interface {
+	DevelopCmd(ctx context.Context, shellAttr string, command []string) *exec.Cmd
+	BuildCmd(ctx context.Context, attr string) *exec.Cmd
+}
+
+// Options configures task execution
+type Options struct {
+	// Jobs bounds how many tasks run at once (default runtime.GOMAXPROCS(0),
+	// the number of CPUs this process may use).
+	Jobs int
+	// ContinueOnError keeps running independent tasks after a failure
+	// instead of cancelling the rest of the run.
+	ContinueOnError bool
+
 	Verbose    bool
-	Debug      bool
 	Force      bool                // Bypass cache (re-run even if cached)
 	NoCache    bool                // Don't read or write cache
 	ProjectKey string              // Cache key for project
@@ -34,22 +51,30 @@ type ExecutorOptions struct {
 	FlakeRoot string
 }
 
-// Executor runs tasks
+// Executor runs a task and its dependencies
 type Executor struct {
-	nix      *nix.Evaluator
+	nix      Nix
 	config   *config.Config
-	options  ExecutorOptions
+	options  Options
+	cache    *cache.Store
 	printer  *ui.Printer
 	streamMu sync.Mutex // guards streaming output across tasks
 }
 
-// NewExecutor creates a new task executor
-func NewExecutor(eval *nix.Evaluator, cfg *config.Config, opts ExecutorOptions) *Executor {
-	eval.SetDebug(opts.Debug)
+// NewExecutor creates a task executor
+func NewExecutor(n Nix, cfg *config.Config, opts Options) *Executor {
+	if opts.Jobs <= 0 {
+		opts.Jobs = runtime.GOMAXPROCS(0)
+	}
+	var store *cache.Store
+	if !opts.NoCache && opts.ProjectKey != "" {
+		store = cache.NewStore(opts.ProjectKey)
+	}
 	return &Executor{
-		nix:     eval,
+		nix:     n,
 		config:  cfg,
 		options: opts,
+		cache:   store,
 		printer: ui.NewPrinter(),
 	}
 }
@@ -78,8 +103,8 @@ func (e *Executor) taskOutput(name string) (stdout, stderr io.Writer) {
 	return buf, buf
 }
 
-// RunTask executes a single task (dispatches to type-specific implementation)
-func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) error {
+// execTask executes a single task (dispatches to type-specific implementation)
+func (e *Executor) execTask(ctx context.Context, name string, task config.Task) error {
 	if e.options.Progress != nil {
 		e.options.Progress.TaskStarted(name)
 	}
@@ -110,8 +135,10 @@ func (e *Executor) taskDir(task config.Task) string {
 
 // runShellTask executes a shell task in nix develop
 func (e *Executor) runShellTask(ctx context.Context, name string, task config.Task) error {
-	// Generate the script to run
-	script := GenerateScript(task)
+	script := task.Script
+	if script == "" {
+		script = strings.Join(task.Commands, "\n")
+	}
 
 	// Run inside nix develop with the task's shell
 	system := nix.CurrentSystem()

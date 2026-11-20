@@ -309,7 +309,7 @@ $ nix-tasks run deploy
 ✓ build (2.1s)
 ✓ deploy (0.8s)
 
-# Parallel execution with 8 jobs
+# Run at most 8 tasks at once (the default is the number of CPUs available)
 $ nix-tasks run ci -j 8
 
 # Continue running independent tasks even if one fails

@@ -276,7 +276,9 @@ lib/                      # Nix library: evalConfig, builders, shells, compositi
 ### Interface Design
 
 Define interfaces where they're used, not where they're implemented. The
-consumer declares only the methods it calls:
+consumer declares only the methods it calls; `runner.Nix`
+(`internal/runner/executor.go`) is a real example, which lets runner tests
+substitute a fake for `*nix.Evaluator`:
 
 ```go
 type evaluator interface {
@@ -440,7 +442,7 @@ type CLI struct {
 ```go
 type RunCmd struct {
 	Task            string `arg:"" help:"Task name to run"`
-	Jobs            int    `short:"j" help:"Number of parallel jobs" default:"4"`
+	Jobs            int    `short:"j" help:"Number of tasks to run at once (default: the number of CPUs available)"`
 	ContinueOnError bool   `help:"Continue running independent tasks on failure"`
 }
 
