@@ -13,6 +13,7 @@ import (
 type TaskGraph struct {
 	tasks      map[string]config.Task
 	edges      map[string][]string // task -> tasks it depends on
+	dependents map[string][]string // task -> tasks that list it in "depends"
 	afterHooks map[string][]string // target task -> tasks that run after it via "after"
 }
 
@@ -21,6 +22,7 @@ func NewTaskGraph(tasks map[string]config.Task) (*TaskGraph, error) {
 	g := &TaskGraph{
 		tasks:      tasks,
 		edges:      make(map[string][]string),
+		dependents: make(map[string][]string),
 		afterHooks: make(map[string][]string),
 	}
 
@@ -37,6 +39,7 @@ func NewTaskGraph(tasks map[string]config.Task) (*TaskGraph, error) {
 				return nil, fmt.Errorf("task '%s' depends on unknown task '%s'", name, depName)
 			}
 			g.edges[name] = append(g.edges[name], depName)
+			g.dependents[depName] = append(g.dependents[depName], name)
 		}
 	}
 
@@ -164,9 +167,15 @@ func (g *TaskGraph) Dependencies(name string) []string {
 	return g.edges[name]
 }
 
-// AfterHooks returns tasks that run after the given task via the "after" field
+// AfterHooks returns the sorted tasks that run after the given task via the
+// "after" field.
 func (g *TaskGraph) AfterHooks(name string) []string {
-	return g.afterHooks[name]
+	return slices.Sorted(slices.Values(g.afterHooks[name]))
+}
+
+// Dependents returns the sorted tasks that list the given task in "depends".
+func (g *TaskGraph) Dependents(name string) []string {
+	return slices.Sorted(slices.Values(g.dependents[name]))
 }
 
 // Tasks returns all task names in the graph

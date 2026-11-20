@@ -1,6 +1,7 @@
 package runner_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -397,4 +398,25 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+func TestTaskGraph_Dependents(t *testing.T) {
+	graph, err := runner.NewTaskGraph(map[string]config.Task{
+		"build": {},
+		"test":  {Depends: []string{"build"}},
+		"lint":  {Depends: []string{"build"}},
+		"hook":  {After: []string{"build"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := graph.Dependents("build"); !slices.Equal(got, []string{"lint", "test"}) {
+		t.Errorf("Dependents(build) = %v, want [lint test]", got)
+	}
+	if got := graph.AfterHooks("build"); !slices.Equal(got, []string{"hook"}) {
+		t.Errorf("AfterHooks(build) = %v, want [hook]", got)
+	}
+	if got := graph.Dependents("test"); len(got) != 0 {
+		t.Errorf("Dependents(test) = %v, want none", got)
+	}
 }

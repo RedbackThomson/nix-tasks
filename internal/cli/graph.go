@@ -108,7 +108,6 @@ func graphChildren(graph *runner.TaskGraph, name string, execSet map[string]bool
 	sort.Strings(deps)
 
 	hooks := graph.AfterHooks(name)
-	sort.Strings(hooks)
 
 	var children []graphChild
 	for _, dep := range deps {
