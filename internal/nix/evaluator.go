@@ -62,8 +62,12 @@ func (e *Evaluator) FlakePath() string {
 
 // Eval evaluates a flake attribute and unmarshals the JSON result
 func (e *Evaluator) Eval(ctx context.Context, attr string, result any) error {
+	return e.eval(ctx, attr, nil, result)
+}
+
+func (e *Evaluator) eval(ctx context.Context, attr string, extraArgs []string, result any) error {
 	expr := fmt.Sprintf("%s#%s", e.flakePath, attr)
-	args := []string{"eval", "--json", expr}
+	args := append([]string{"eval", "--json", expr}, extraArgs...)
 
 	if e.debug {
 		slog.Debug("running nix command", "cmd", "nix", "args", args)
@@ -127,11 +131,38 @@ func ParseBuildOutputs(data []byte) (map[string]string, error) {
 	return outputs, nil
 }
 
-// DevelopCmd returns an exec.Cmd that runs a command inside nix develop
-func (e *Evaluator) DevelopCmd(ctx context.Context, shellAttr string, command []string) *exec.Cmd {
-	expr := fmt.Sprintf("%s#%s", e.flakePath, shellAttr)
-	args := []string{"develop", expr, "--command"}
-	args = append(args, command...)
+// ShellDrvPaths returns the drvPath of the shell each named task runs in,
+// evaluating only those shells.
+func (e *Evaluator) ShellDrvPaths(ctx context.Context, system string, tasks []string) (map[string]string, error) {
+	wanted := make(map[string]any, len(tasks))
+	for _, t := range tasks {
+		wanted[t] = nil
+	}
+	wantedJSON, err := json.Marshal(wanted)
+	if err != nil {
+		return nil, err
+	}
+
+	attr := "nixTasksShellDrvs." + QuoteAttr(system)
+	apply := fmt.Sprintf("drvs: builtins.intersectAttrs (builtins.fromJSON %s) drvs", NixString(string(wantedJSON)))
+	var drvs map[string]string
+	if err := e.eval(ctx, attr, []string{"--apply", apply}, &drvs); err != nil {
+		return nil, err
+	}
+	for _, t := range tasks {
+		if drvs[t] == "" {
+			return nil, fmt.Errorf("%s has no shell for task '%s'", attr, t)
+		}
+	}
+	return drvs, nil
+}
+
+// PrintDevEnvCmd returns an exec.Cmd that prints the environment of the shell
+// derivation drvPath as JSON (see ParseDevEnv). profile becomes a Nix profile
+// pointing at the environment, which keeps it and the shell's dependencies
+// alive across garbage collection for as long as the profile link exists.
+func (e *Evaluator) PrintDevEnvCmd(ctx context.Context, drvPath, profile string) *exec.Cmd {
+	args := []string{"print-dev-env", "--json", "--profile", profile, drvPath + "^*"}
 
 	if e.debug {
 		slog.Debug("running nix command", "cmd", "nix", "args", args)

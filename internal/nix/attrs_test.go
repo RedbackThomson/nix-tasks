@@ -12,8 +12,6 @@ func TestAttrHelpers(t *testing.T) {
 		got  string
 		want string
 	}{
-		{"shell", nix.NixTasksShellsAttr("x86_64-linux", "build"), `nixTasksShells."x86_64-linux"."build"`},
-		{"shell with dot", nix.NixTasksShellsAttr("x86_64-linux", "lint.go"), `nixTasksShells."x86_64-linux"."lint.go"`},
 		{"build with dot", nix.NixTasksBuildsAttr("aarch64-darwin", "app.bin"), `nixTasksBuilds."aarch64-darwin"."app.bin"`},
 		{"dev shell with dot", nix.DevShellAttr("aarch64-darwin", "ci.full"), `devShells."aarch64-darwin"."ci.full"`},
 	}

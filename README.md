@@ -140,9 +140,10 @@ every system and returns the flake outputs the CLI reads.
 | `specialArgs` | Extra arguments passed to every module, e.g. `{ inherit inputs; }` |
 
 Modules receive `pkgs`, `lib` (nixpkgs' lib) and `tasksLib` (the nix-tasks
-builders, built with your `pkgs`). The flake outputs are `nixTasksConfig`,
-`nixTasksShells`, `nixTasksShellDrvs`, `nixTasksBuilds` (read by the CLI) and
-`devShells` (for `nix develop`), each per system.
+builders, built with your `pkgs`). The flake outputs, each per system, are
+`nixTasksConfig`, `nixTasksShellDrvs` and `nixTasksBuilds` (read by the CLI),
+`nixTasksShells` (the task shells themselves) and `devShells` (for
+`nix develop`).
 
 ### 2. List available tasks
 
@@ -334,6 +335,21 @@ directory (or `-f`) but not past a git repository root (a directory containing
 are relative to that root. `-f` accepts a relative path such as
 `-f examples/demo`; non-path references like `github:owner/repo` are passed to
 `nix` unchanged.
+
+A shell task runs its script with the `bash` from its shell, in the
+environment `nix develop` would give it (the shell's packages first on
+`PATH`), with the task's `env` applied on top. A task's `env.PATH` is put in
+front of the shell's `PATH` rather than replacing it, so the shell's tools
+stay available; every other variable in `env` replaces the shell's value.
+nix-tasks evaluates the shells
+of all the tasks in a run at once and realises each distinct shell once, with
+`nix print-dev-env`. The resulting environment is cached in
+the `devenv/` directory of the nix-tasks cache (`~/.cache/nix-tasks`,
+`$XDG_CACHE_HOME/nix-tasks` or `$NIX_TASKS_CACHE_DIR`), keyed
+by the shell's derivation, so later runs with the same packages start tasks
+without calling Nix for them; a Nix profile link next to each entry stops
+`nix store gc` from collecting the shell's packages while the entry exists.
+Deleting the directory is always safe.
 
 Each task starts as soon as all of its dependencies have succeeded, up to `-j`
 tasks at a time. If a dependency fails, its dependents are skipped. By default

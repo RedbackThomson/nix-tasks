@@ -1,4 +1,4 @@
-# The flake outputs the nix-tasks CLI reads. Attribute names and the JSON
+# The flake outputs of a nix-tasks configuration. Attribute names and the JSON
 # shape of nixTasksConfig must match internal/config and internal/nix.
 { mkLib }:
 { pkgs, modules, specialArgs ? { } }:

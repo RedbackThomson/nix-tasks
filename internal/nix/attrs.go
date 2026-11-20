@@ -21,11 +21,6 @@ func AttrPath(names ...string) string {
 	return strings.Join(quoted, ".")
 }
 
-// NixTasksShellsAttr returns the flake attribute for a task's execution shell.
-func NixTasksShellsAttr(system, taskName string) string {
-	return "nixTasksShells." + AttrPath(system, taskName)
-}
-
 // NixTasksBuildsAttr returns the flake attribute for a build task's derivation.
 func NixTasksBuildsAttr(system, taskName string) string {
 	return "nixTasksBuilds." + AttrPath(system, taskName)
@@ -35,3 +30,10 @@ func NixTasksBuildsAttr(system, taskName string) string {
 func DevShellAttr(system, shellName string) string {
 	return "devShells." + AttrPath(system, shellName)
 }
+
+// NixString quotes s as a Nix string literal.
+func NixString(s string) string {
+	return `"` + nixStringEscaper.Replace(s) + `"`
+}
+
+var nixStringEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "${", `\${`, "\n", `\n`, "\r", `\r`, "\t", `\t`)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -20,14 +21,42 @@ import (
 	"github.com/redbackthomson/nix-tasks/internal/runner"
 )
 
-// fakeNix runs task scripts with the host bash instead of inside nix develop.
-type fakeNix struct{}
-
-func (fakeNix) DevelopCmd(ctx context.Context, _ string, command []string) *exec.Cmd {
-	return exec.CommandContext(ctx, command[0], command[1:]...)
+// fakeNix gives every task the same shell, whose environment is the host's
+// plus FAKE_SHELL=<drvPath>, so scripts run with the host bash.
+type fakeNix struct {
+	mu       sync.Mutex
+	drvs     map[string]string // task -> drvPath; unset tasks share one shell
+	broken   map[string]bool   // tasks whose shell fails to evaluate
+	evals    [][]string
+	realised []string
 }
 
-func (fakeNix) BuildCmd(ctx context.Context, _ string) *exec.Cmd {
+func (f *fakeNix) ShellDrvPaths(_ context.Context, _ string, tasks []string) (map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.evals = append(f.evals, slices.Clone(tasks))
+	out := make(map[string]string, len(tasks))
+	for _, t := range tasks {
+		if f.broken[t] {
+			return nil, fmt.Errorf("shell of %s is broken", t)
+		}
+		out[t] = "/nix/store/shared-nix-shell.drv"
+		if drv, ok := f.drvs[t]; ok {
+			out[t] = drv
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeNix) PrintDevEnvCmd(ctx context.Context, drvPath, profile string) *exec.Cmd {
+	f.mu.Lock()
+	f.realised = append(f.realised, drvPath)
+	f.mu.Unlock()
+	env := fmt.Sprintf(`{"variables":{"FAKE_SHELL":{"type":"exported","value":%q}}}`, drvPath)
+	return exec.CommandContext(ctx, "sh", "-c", `ln -sfn / "$1" && printf '%s' "$2"`, "sh", profile, env)
+}
+
+func (f *fakeNix) BuildCmd(ctx context.Context, _ string) *exec.Cmd {
 	return exec.CommandContext(ctx, "false")
 }
 
@@ -103,13 +132,20 @@ func (w *lockedWriter) Write(p []byte) (int, error) {
 type harness struct {
 	t    *testing.T
 	dir  string
+	nix  *fakeNix
 	opts runner.Options
 	rec  *recorder
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	return &harness{t: t, dir: t.TempDir(), rec: newRecorder()}
+	return &harness{
+		t:    t,
+		dir:  t.TempDir(),
+		nix:  &fakeNix{},
+		opts: runner.Options{DevEnvDir: t.TempDir()},
+		rec:  newRecorder(),
+	}
 }
 
 func (h *harness) run(ctx context.Context, tasks map[string]config.Task, target string) map[string]runner.TaskResult {
@@ -122,7 +158,7 @@ func (h *harness) run(ctx context.Context, tasks map[string]config.Task, target 
 	opts := h.opts
 	opts.FlakeRoot = h.dir
 	opts.Reporter = h.rec
-	ex := runner.NewExecutor(fakeNix{}, &config.Config{Tasks: tasks}, opts)
+	ex := runner.NewExecutor(h.nix, &config.Config{Tasks: tasks}, opts)
 	results, err := ex.Run(ctx, graph, target)
 	if err != nil {
 		h.t.Fatalf("Run: %v", err)
@@ -195,7 +231,7 @@ func TestRun_ResultsInDeterministicOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 5 {
-		ex := runner.NewExecutor(fakeNix{}, &config.Config{Tasks: tasks}, runner.Options{FlakeRoot: t.TempDir()})
+		ex := runner.NewExecutor(&fakeNix{}, &config.Config{Tasks: tasks}, runner.Options{FlakeRoot: t.TempDir(), DevEnvDir: t.TempDir()})
 		results, err := ex.Run(context.Background(), graph, "all")
 		if err != nil {
 			t.Fatal(err)
