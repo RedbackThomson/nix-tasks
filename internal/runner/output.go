@@ -40,56 +40,6 @@ func isTerminal(f *os.File) bool {
 	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 
-// OutputManager handles task output based on mode
-type OutputManager struct {
-	mode    OutputMode
-	mu      sync.Mutex
-	buffers map[string]*bytes.Buffer
-}
-
-// NewOutputManager creates an output manager
-func NewOutputManager(mode OutputMode) *OutputManager {
-	return &OutputManager{
-		mode:    mode,
-		buffers: make(map[string]*bytes.Buffer),
-	}
-}
-
-// Writer returns an io.Writer for task output
-func (m *OutputManager) Writer(taskName string) io.Writer {
-	switch m.mode {
-	case Streaming:
-		return &prefixWriter{
-			prefix: fmt.Sprintf("[%s] ", taskName),
-			out:    os.Stdout,
-			mu:     &m.mu,
-		}
-	case Buffered:
-		buf := &bytes.Buffer{}
-		m.mu.Lock()
-		m.buffers[taskName] = buf
-		m.mu.Unlock()
-		return buf
-	default:
-		return io.Discard
-	}
-}
-
-// FlushOnError prints buffered output for a failed task
-func (m *OutputManager) FlushOnError(taskName string) {
-	if m.mode != Buffered {
-		return
-	}
-
-	m.mu.Lock()
-	buf, ok := m.buffers[taskName]
-	m.mu.Unlock()
-
-	if ok && buf.Len() > 0 {
-		fmt.Print(buf.String())
-	}
-}
-
 // prefixWriter adds a prefix to each line
 type prefixWriter struct {
 	prefix string
