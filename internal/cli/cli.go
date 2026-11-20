@@ -5,6 +5,10 @@ type Globals struct {
 	Verbose bool   `short:"v" help:"Show task output"`
 	Debug   bool   `help:"Show debug information including Nix commands"`
 	Flake   string `short:"f" help:"Path to flake" default:"."`
+
+	// FlakeRoot is the local directory containing flake.nix, or empty when
+	// Flake is not a local path. Set by ResolveFlake.
+	FlakeRoot string `kong:"-"`
 }
 
 // CLI is the root command structure

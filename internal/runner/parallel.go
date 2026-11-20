@@ -206,7 +206,7 @@ func (p *ParallelExecutor) runTask(ctx context.Context, name string, task config
 	var fp *cache.Fingerprint
 	if p.cache != nil {
 		var fpErr error
-		fp, fpErr = cache.ComputeFingerprint(task, p.executor.config.Packages, task.WorkingDir)
+		fp, fpErr = cache.ComputeFingerprint(task, p.executor.config.Packages, p.executor.taskDir(task))
 		if fpErr != nil {
 			slog.Debug("failed to compute fingerprint", "task", name, "error", fpErr)
 			// Continue without caching

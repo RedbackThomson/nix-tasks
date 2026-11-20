@@ -28,6 +28,10 @@ type ExecutorOptions struct {
 	ProjectKey string              // Cache key for project
 	RawTarget  string              // If non-empty, pipe this task's output directly (no decoration)
 	Progress   *ui.ProgressDisplay // Live progress display (nil unless Progress mode)
+
+	// FlakeRoot is the directory tasks run in and relative workingDirs and
+	// .nix-tasks/ resolve against. Empty means the current directory.
+	FlakeRoot string
 }
 
 // Executor runs tasks
@@ -98,6 +102,14 @@ func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) e
 	}
 }
 
+// taskDir returns the directory a task runs in.
+func (e *Executor) taskDir(task config.Task) string {
+	if filepath.IsAbs(task.WorkingDir) {
+		return task.WorkingDir
+	}
+	return filepath.Join(e.options.FlakeRoot, task.WorkingDir)
+}
+
 // runShellTask executes a shell task in nix develop
 func (e *Executor) runShellTask(ctx context.Context, name string, task config.Task) error {
 	// Generate the script to run
@@ -111,10 +123,7 @@ func (e *Executor) runShellTask(ctx context.Context, name string, task config.Ta
 	// Configure output
 	cmd.Stdout, cmd.Stderr = e.taskOutput(name)
 
-	// Set working directory if specified
-	if task.WorkingDir != "" {
-		cmd.Dir = task.WorkingDir
-	}
+	cmd.Dir = e.taskDir(task)
 
 	// Set environment variables
 	cmd.Env = os.Environ()
@@ -168,7 +177,7 @@ func (e *Executor) runBuildTask(ctx context.Context, name string) error {
 
 // linkBuildOutputs creates symlinks in .nix-tasks/<taskname>/<output>
 func (e *Executor) linkBuildOutputs(name string, outputs map[string]string) error {
-	taskDir := filepath.Join(".nix-tasks", name)
+	taskDir := filepath.Join(e.options.FlakeRoot, ".nix-tasks", name)
 	if err := os.MkdirAll(taskDir, 0755); err != nil {
 		return err
 	}

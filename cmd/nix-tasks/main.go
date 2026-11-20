@@ -24,6 +24,8 @@ func main() {
 		})))
 	}
 
+	ctx.FatalIfErrorf(rootCmd.Globals.ResolveFlake())
+
 	err := ctx.Run(&rootCmd.Globals)
 
 	var exitErr *cli.ExitCodeError

@@ -23,36 +23,36 @@
             task-1 = lib.mkTask {
               description = "Independent task 1";
               commands = [
-                "echo \"task-1 start $(date +%s%3N)\" >> timings.log"
+                "echo \"task-1 start $(date +%s%3N)\" >> \"$NIX_TASKS_TEST_LOG_DIR/timings.log\""
                 "sleep 1"
-                "echo \"task-1 end $(date +%s%3N)\" >> timings.log"
+                "echo \"task-1 end $(date +%s%3N)\" >> \"$NIX_TASKS_TEST_LOG_DIR/timings.log\""
               ];
             };
 
             task-2 = lib.mkTask {
               description = "Independent task 2";
               commands = [
-                "echo \"task-2 start $(date +%s%3N)\" >> timings.log"
+                "echo \"task-2 start $(date +%s%3N)\" >> \"$NIX_TASKS_TEST_LOG_DIR/timings.log\""
                 "sleep 1"
-                "echo \"task-2 end $(date +%s%3N)\" >> timings.log"
+                "echo \"task-2 end $(date +%s%3N)\" >> \"$NIX_TASKS_TEST_LOG_DIR/timings.log\""
               ];
             };
 
             task-3 = lib.mkTask {
               description = "Independent task 3";
               commands = [
-                "echo \"task-3 start $(date +%s%3N)\" >> timings.log"
+                "echo \"task-3 start $(date +%s%3N)\" >> \"$NIX_TASKS_TEST_LOG_DIR/timings.log\""
                 "sleep 1"
-                "echo \"task-3 end $(date +%s%3N)\" >> timings.log"
+                "echo \"task-3 end $(date +%s%3N)\" >> \"$NIX_TASKS_TEST_LOG_DIR/timings.log\""
               ];
             };
 
             task-4 = lib.mkTask {
               description = "Independent task 4";
               commands = [
-                "echo \"task-4 start $(date +%s%3N)\" >> timings.log"
+                "echo \"task-4 start $(date +%s%3N)\" >> \"$NIX_TASKS_TEST_LOG_DIR/timings.log\""
                 "sleep 1"
-                "echo \"task-4 end $(date +%s%3N)\" >> timings.log"
+                "echo \"task-4 end $(date +%s%3N)\" >> \"$NIX_TASKS_TEST_LOG_DIR/timings.log\""
               ];
             };
 

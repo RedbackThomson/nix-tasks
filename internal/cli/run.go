@@ -124,6 +124,7 @@ func (c *RunCmd) Run(globals *Globals) error {
 			ProjectKey: projectKey,
 			RawTarget:  rawTarget,
 			Progress:   progress,
+			FlakeRoot:  globals.FlakeRoot,
 		},
 		runner.ParallelExecutorOptions{
 			MaxJobs:  c.Jobs,
