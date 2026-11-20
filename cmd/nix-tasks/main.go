@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"log/slog"
 	"os"
 
@@ -24,5 +25,11 @@ func main() {
 	}
 
 	err := ctx.Run(&rootCmd.Globals)
+
+	var exitErr *cli.ExitCodeError
+	if errors.As(err, &exitErr) {
+		ctx.Errorf("%s", err)
+		ctx.Exit(exitErr.Code)
+	}
 	ctx.FatalIfErrorf(err)
 }

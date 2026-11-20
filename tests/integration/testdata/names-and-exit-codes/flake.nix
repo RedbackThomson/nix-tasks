@@ -22,6 +22,28 @@
               description = "Task whose name contains a dot";
               commands = [ "echo 'linted go'" ];
             };
+
+            exit-four = lib.mkTask {
+              description = "Fails with exit code 4";
+              commands = [ "exit 4" ];
+            };
+
+            exit-five = lib.mkTask {
+              description = "Fails with exit code 5";
+              commands = [ "exit 5" ];
+            };
+
+            after-exit-four = lib.mkTask {
+              description = "Depends on a task that exits 4";
+              depends = [ "task:exit-four" ];
+              commands = [ "echo unreachable" ];
+            };
+
+            both-fail = lib.mkTask {
+              description = "Depends on two failing tasks";
+              depends = [ "task:exit-four" "task:exit-five" ];
+              commands = [ "echo unreachable" ];
+            };
           };
 
           devShells = {
