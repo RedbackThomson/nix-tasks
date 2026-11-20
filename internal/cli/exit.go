@@ -2,7 +2,6 @@ package cli
 
 import (
 	"errors"
-	"os/exec"
 
 	"github.com/redbackthomson/nix-tasks/internal/runner"
 )
@@ -45,9 +44,8 @@ func runExitCode(results []runner.TaskResult) int {
 	}
 	switch {
 	case len(failed) == 1:
-		var exitErr *exec.ExitError
-		if errors.As(failed[0].Error, &exitErr) && exitErr.ExitCode() > 0 {
-			return exitErr.ExitCode()
+		if code := failed[0].ExitCode(); code > 0 {
+			return code
 		}
 		return 1
 	case len(failed) > 1:

@@ -1,78 +1,107 @@
 package ui
 
 import (
-	"bytes"
-	"io"
+	"strings"
 	"sync"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
-// tailWriter is an io.Writer that splits incoming bytes into lines,
-// pushes complete lines into the task's ring buffer, and also writes
-// everything to the full buffer (for post-run error display).
+// tailWriter keeps the last few lines of a task's output for the live
+// progress display. Lines are sanitized so they can be drawn on one terminal
+// row: escape sequences and control characters are removed.
 type tailWriter struct {
-	state   *taskState
-	display *ProgressDisplay
-
-	mu      sync.Mutex
-	partial bytes.Buffer // accumulates bytes until a newline
+	mu     sync.Mutex
+	lines  lineSplitter
+	ring   *ringBuffer
+	notify func()
 }
 
-// Writer returns a thread-safe io.Writer that feeds into the task's
-// ring buffer and full buffer simultaneously.
-func (pd *ProgressDisplay) Writer(name string) io.Writer {
-	pd.mu.Lock()
-	ts, ok := pd.tasks[name]
-	pd.mu.Unlock()
-	if !ok {
-		return io.Discard
-	}
-	return &tailWriter{
-		state:   ts,
-		display: pd,
-	}
+func newTailWriter(n int, notify func()) *tailWriter {
+	return &tailWriter{ring: newRingBuffer(n), notify: notify}
 }
 
 func (tw *tailWriter) Write(p []byte) (int, error) {
 	tw.mu.Lock()
-	defer tw.mu.Unlock()
-
-	n := len(p)
-
-	// Always write to full buffer (unmodified)
-	tw.state.mu.Lock()
-	tw.state.fullBuf.Write(p)
-	tw.state.mu.Unlock()
-
-	// Strip \r before line-splitting for the ring buffer.
-	// Tools like `go test` emit \r for in-place progress updates;
-	// these corrupt the progress display's ANSI cursor positioning.
-	cleaned := bytes.ReplaceAll(p, []byte("\r"), nil)
-
-	// Split into lines for the ring buffer
-	remaining := cleaned
-	for len(remaining) > 0 {
-		idx := bytes.IndexByte(remaining, '\n')
-		if idx == -1 {
-			// No newline -- accumulate partial line
-			tw.partial.Write(remaining)
-			break
-		}
-
-		// Complete a line: partial + everything before \n
-		tw.partial.Write(remaining[:idx])
-		line := tw.partial.String()
-		tw.partial.Reset()
-
-		// Push into ring buffer
-		tw.state.mu.Lock()
-		tw.state.lines.Push(line)
-		tw.state.mu.Unlock()
-
-		remaining = remaining[idx+1:]
+	tw.lines.feed(p, func(line []byte) {
+		tw.ring.Push(sanitizeLine(string(line)))
+	})
+	tw.mu.Unlock()
+	if tw.notify != nil {
+		tw.notify()
 	}
+	return len(p), nil
+}
 
-	// Notify the display that content changed
-	tw.display.notify()
+// tail returns up to the last n lines, including a line still being written
+// so that \r-driven progress shows up as it happens.
+func (tw *tailWriter) tail(n int) []string {
+	tw.mu.Lock()
+	defer tw.mu.Unlock()
+	lines := tw.ring.Lines()
+	if p := tw.lines.partial(); len(p) > 0 {
+		lines = append(lines, sanitizeLine(string(p)))
+	}
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return lines
+}
 
-	return n, nil
+// sanitizeLine removes escape sequences and control characters, and expands
+// tabs, so the line's display width is what it looks like.
+func sanitizeLine(s string) string {
+	s = ansi.Strip(s)
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, strings.ReplaceAll(s, "\t", "    "))
+}
+
+// truncateWidth shortens s to at most width terminal columns, ending in an
+// ellipsis when cut. It never splits a rune or an escape sequence.
+func truncateWidth(s string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	return ansi.Truncate(s, width, "…")
+}
+
+// ringBuffer is a fixed-size circular buffer of strings
+type ringBuffer struct {
+	items []string
+	head  int // index of next write position
+	count int // number of items stored (up to cap)
+	cap   int
+}
+
+func newRingBuffer(capacity int) *ringBuffer {
+	return &ringBuffer{
+		items: make([]string, capacity),
+		cap:   capacity,
+	}
+}
+
+// Push adds a line to the ring buffer, evicting the oldest if full
+func (rb *ringBuffer) Push(line string) {
+	rb.items[rb.head] = line
+	rb.head = (rb.head + 1) % rb.cap
+	if rb.count < rb.cap {
+		rb.count++
+	}
+}
+
+// Lines returns the stored lines in chronological order
+func (rb *ringBuffer) Lines() []string {
+	if rb.count == 0 {
+		return nil
+	}
+	result := make([]string, rb.count)
+	start := (rb.head - rb.count + rb.cap) % rb.cap
+	for i := 0; i < rb.count; i++ {
+		result[i] = rb.items[(start+i)%rb.cap]
+	}
+	return result
 }

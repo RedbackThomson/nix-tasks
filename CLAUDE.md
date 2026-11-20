@@ -182,6 +182,7 @@ import (
     tea "github.com/charmbracelet/bubbletea"         // TUI
     "github.com/charmbracelet/lipgloss"              // TUI styling
     "github.com/charmbracelet/x/term"                // terminal size
+    "github.com/charmbracelet/x/ansi"                // display width of styled text
     "github.com/bmatcuk/doublestar/v4"               // ** globs for task inputs
 )
 ```
@@ -269,7 +270,7 @@ internal/
     nix/                  # nix CLI wrapper (evaluator.go) and its errors (errors.go)
     runner/               # Dependency graph (graph.go) and task execution
     cache/                # Fingerprints (fingerprint.go) and the on-disk store (store.go)
-    ui/                   # Colours, status printing and the progress display
+    ui/                   # Colours, run Reporters (progress, line, raw) and status printing
     tui/                  # Bubbletea app (app.go)
 lib/                      # Nix library: module options (module.nix), outputs (eval.nix), builders, Make compat, tests
 ```
@@ -469,10 +470,12 @@ fmt.Printf("%s %s\n", ui.Success("✓"), taskName)
 fmt.Printf("%s %s\n", ui.Failure("✗"), taskName)
 ```
 
-**Terminal vs CI:** use `ui.IsTerminal` for terminal checks.
-`runner.DetectOutputMode` streams prefixed output when `CI` is set, shows the
-live progress display when stdout is a terminal, and
-otherwise buffers each task's output and prints it only on failure.
+**Terminal vs CI:** use `ui.IsTerminal` for terminal checks. The runner only
+talks to a `ui.Reporter`; `RunCmd.newReporter` (`internal/cli/run.go`) picks
+one: `RawReporter` for `--raw`, a streaming `LineReporter` for `-v` and when
+`CI` is set, the `ProgressReporter` on a terminal, and otherwise a
+`LineReporter` that prints start and finish lines and shows output only for
+failed tasks.
 
 ## Nix Integration Patterns
 
