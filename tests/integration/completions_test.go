@@ -59,7 +59,7 @@ _nix_tasks
 printf '%s\n' "${COMPREPLY[@]}"`
 		cmd := exec.Command("bash", "-c", script, "bash", strings.Join(words, " "))
 		cmd.Dir = t.TempDir()
-		cmd.Env = append(os.Environ(), "PATH="+filepath.Dir(binary)+string(os.PathListSeparator)+os.Getenv("PATH"))
+		cmd.Env = append(testEnviron(), "PATH="+filepath.Dir(binary)+string(os.PathListSeparator)+os.Getenv("PATH"))
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("completion failed: %v\n%s", err, out)

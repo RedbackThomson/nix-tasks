@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/redbackthomson/nix-tasks/internal/cache"
 )
 
 var builtBinary string
@@ -26,6 +28,17 @@ func TestMain(m *testing.M) {
 }
 
 func runTests(m *testing.M) int {
+	// Under `git rebase --exec` or a git hook, git variables such as GIT_DIR
+	// name the outer repository; every command the suite starts, nix-tasks,
+	// nix and the tools under test alike, must find repositories itself.
+	keep := cache.GitEnv(os.Environ())
+	for _, kv := range os.Environ() {
+		if !slices.Contains(keep, kv) {
+			name, _, _ := strings.Cut(kv, "=")
+			_ = os.Unsetenv(name)
+		}
+	}
+
 	dir, err := os.MkdirTemp("", "nix-tasks-integration-")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
@@ -94,17 +107,29 @@ func runNixTasksInDir(t *testing.T, binary, workDir, cacheDir string, args ...st
 }
 
 // testEnviron returns this process's environment without the variables
-// GitHub Actions sets to switch nix-tasks to its github output, plus any
-// named in drop, so the suite checks the same output wherever it runs.
+// GitHub Actions sets to switch nix-tasks to its github output, the git
+// variables that would point git at another repository, and any named in
+// drop, so the suite checks the same output wherever it runs.
 func testEnviron(drop ...string) []string {
 	drop = append(drop, "GITHUB_ACTIONS", "GITHUB_STEP_SUMMARY")
 	var env []string
-	for _, kv := range os.Environ() {
+	for _, kv := range cache.GitEnv(os.Environ()) {
 		if k, _, _ := strings.Cut(kv, "="); !slices.Contains(drop, k) {
 			env = append(env, kv)
 		}
 	}
 	return env
+}
+
+func TestEnviron_StripsGitVariables(t *testing.T) {
+	t.Setenv("GIT_DIR", "/outer/.git")
+	t.Setenv("GIT_WORK_TREE", "/outer")
+	t.Setenv("GIT_CONFIG_PARAMETERS", "'core.bare'='true'")
+	for _, kv := range testEnviron() {
+		if name, _, _ := strings.Cut(kv, "="); name == "GIT_DIR" || name == "GIT_WORK_TREE" || strings.HasPrefix(name, "GIT_CONFIG") {
+			t.Errorf("testEnviron passes %s on to commands", kv)
+		}
+	}
 }
 
 var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)

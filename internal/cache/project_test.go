@@ -117,7 +117,7 @@ func testGit(t *testing.T, dir string, args ...string) {
 		t.Skip("git is not installed")
 	}
 	cmd := exec.Command("git", append([]string{"-C", abs}, args...)...)
-	cmd.Env = append(gitEnv(os.Environ()), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	cmd.Env = append(GitEnv(os.Environ()), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
@@ -162,9 +162,9 @@ func TestGitEnv_InheritedRepositoryIsNeverTouched(t *testing.T) {
 }
 
 func TestGitEnv_StripsRepositoryAndConfigVariables(t *testing.T) {
-	got := gitEnv([]string{"PATH=/bin", "GIT_DIR=/x", "GIT_WORK_TREE=/x", "GIT_CONFIG_GLOBAL=/x", "GIT_CONFIG_KEY_0=a", "GIT_CEILING_DIRECTORIES=/", "GIT_TERMINAL_PROMPT=0"})
+	got := GitEnv([]string{"PATH=/bin", "GIT_DIR=/x", "GIT_WORK_TREE=/x", "GIT_CONFIG_GLOBAL=/x", "GIT_CONFIG_KEY_0=a", "GIT_CEILING_DIRECTORIES=/", "GIT_TERMINAL_PROMPT=0"})
 	want := []string{"PATH=/bin", "GIT_TERMINAL_PROMPT=0"}
 	if !slices.Equal(got, want) {
-		t.Errorf("gitEnv = %v, want %v", got, want)
+		t.Errorf("GitEnv = %v, want %v", got, want)
 	}
 }
