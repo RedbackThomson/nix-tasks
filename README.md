@@ -309,7 +309,8 @@ shells with `tab`, and press `?` to see every key.
 
 The detail pane, beside the list (or below it in narrow terminals), shows the
 selected task's description, type, packages, dependencies, after-hooks, env,
-working directory, `continueOnError` and its commands or script; for a dev
+working directory, `continueOnError`, its `cache` declaration and its
+commands or script; for a dev
 shell it shows its packages, the packages it inherits, its full `extends`
 chain and its env. `/` filters the list by name or description as you type
 (`enter` keeps the filter, `esc` clears it). `g` shows the selected task's

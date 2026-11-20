@@ -88,6 +88,7 @@ func taskDetail(name string, task config.Task, width int) []string {
 	d.add(fields...)
 
 	d.add(d.block("Env", envLines(task.Env))...)
+	d.add(d.block("Cache", cacheLines(task.Cache))...)
 
 	switch {
 	case len(task.Commands) > 0:
@@ -151,6 +152,24 @@ func envLines(env map[string]string) []string {
 	lines := make([]string, len(keys))
 	for i, k := range keys {
 		lines[i] = k + "=" + env[k]
+	}
+	return lines
+}
+
+// cacheLines summarises a task's cache declaration; nil for uncached tasks.
+func cacheLines(c *config.TaskCache) []string {
+	if c == nil {
+		return nil
+	}
+	list := func(items []string) string {
+		if len(items) == 0 {
+			return "none"
+		}
+		return strings.Join(items, ", ")
+	}
+	lines := []string{"inputs:  " + list(c.Inputs), "outputs: " + list(c.Outputs)}
+	if len(c.Env) > 0 {
+		lines = append(lines, "env:     "+list(c.Env))
 	}
 	return lines
 }
