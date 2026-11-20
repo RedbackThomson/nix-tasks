@@ -263,7 +263,7 @@ problem it finds before exiting non-zero.
 nix-tasks <command> [flags]
 
 Commands:
-  run <task>       Run a task (with dependencies)
+  run <task>...    Run tasks (with dependencies)
   list             List available tasks and shells
   describe <task>  Show task details
   graph <task>     Show execution graph for a task
@@ -309,6 +309,9 @@ Navigate with `j/k` or arrow keys, `tab` to switch between tasks and shells, and
 ```bash
 # Run a single task
 $ nix-tasks run build
+
+# Run several tasks as one run: shared dependencies run once, one summary
+$ nix-tasks run build test lint
 
 # Run with dependencies (automatically runs task:build first)
 $ nix-tasks run deploy
@@ -412,9 +415,11 @@ Completed: 4 tasks (1 passed, 1 cached, 1 failed, 1 skipped)
 
 Every mode ends with the same summary:
 
-1. The dependency tree of the target, each task with its marker, duration
-   (or `(cached)`) and, for a failure, its exit code. A task needed by
-   several others is drawn once; later appearances are marked with `*`.
+1. The dependency tree of each target, each task with its marker, duration
+   (or `(cached)`) and, for a failure, its exit code. A run of several
+   targets draws one tree per target, in the order given. A task needed by
+   several others, or by several targets, is drawn once; later appearances
+   are marked with `*`.
 2. The output of each failed or allowed-failed task that was not already
    shown: its last 50 lines. When a real failure's output is longer, the
    full output is saved to a temp file whose path is printed; an allowed
@@ -422,8 +427,8 @@ Every mode ends with the same summary:
 3. The totals.
 
 `--raw` connects the target task directly to stdout and stderr and prints
-nothing else. If a dependency fails, its name and the tail of its output are
-printed to stderr.
+nothing else, so it takes a single task. If a dependency fails, the summary
+is printed to stderr so it is clear why the target did not run.
 
 If exactly one task fails because its command exited non-zero, `nix-tasks run`
 exits with that command's exit code (also with `--raw`); any other failure
@@ -510,7 +515,8 @@ from its own CLI definition (with
 command, flag and flag value is covered and the scripts never go stale. Task
 and dev shell names are read from `nix-tasks list --names` for the flake given
 with `-f` (or the current directory), which evaluates the flake on each TAB;
-`-f` itself completes directories. The Nix package installs all three
+`-f` itself completes directories. Every argument after `run` completes to a
+task name, since `run` takes several. The Nix package installs all three
 scripts. In zsh, run `compinit` before adding the script to `~/.zshrc`.
 
 ### Defining Tasks

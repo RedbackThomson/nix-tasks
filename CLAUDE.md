@@ -430,7 +430,7 @@ type Globals struct {
 type CLI struct {
 	Globals
 
-	Run         RunCmd         `cmd:"" help:"Run a task"`
+	Run         RunCmd         `cmd:"" help:"Run one or more tasks"`
 	List        ListCmd        `cmd:"" help:"List available tasks and shells"`
 	Describe    DescribeCmd    `cmd:"" help:"Show task details"`
 	Graph       GraphCmd       `cmd:"" help:"Show execution graph for a task"`
@@ -446,9 +446,9 @@ type CLI struct {
 
 ```go
 type RunCmd struct {
-	Task            string `arg:"" completion-predictor:"task" help:"Task name to run"`
-	Jobs            *int   `short:"j" help:"Number of tasks to run at once (default: $NIX_TASKS_JOBS, or else the number of CPUs available)"`
-	ContinueOnError bool   `help:"Continue running independent tasks on failure"`
+	Tasks           []string `arg:"" name:"task" completion-predictor:"task" help:"Tasks to run; several run together with one summary"`
+	Jobs            *int     `short:"j" help:"Number of tasks to run at once (default: $NIX_TASKS_JOBS, or else the number of CPUs available)"`
+	ContinueOnError bool     `help:"Continue running independent tasks on failure"`
 }
 
 func (c *RunCmd) Run(globals *Globals) error {

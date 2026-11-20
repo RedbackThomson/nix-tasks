@@ -9,22 +9,24 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/cache"
+	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/runner"
 	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
-// RunCmd runs a task
+// RunCmd runs one or more tasks
 type RunCmd struct {
-	Task            string `arg:"" completion-predictor:"task" help:"Task name to run"`
-	Jobs            *int   `short:"j" help:"Number of tasks to run at once (default: $NIX_TASKS_JOBS, or else the number of CPUs available)"`
-	ContinueOnError bool   `help:"Continue running independent tasks on failure"`
-	Force           bool   `help:"Force re-run tasks even if cached"`
-	NoCache         bool   `help:"Disable caching (don't read or write cache)"`
-	Raw             bool   `help:"Pipe task output directly to stdout/stderr with no decoration"`
+	Tasks           []string `arg:"" name:"task" completion-predictor:"task" help:"Tasks to run; several run together with one summary"`
+	Jobs            *int     `short:"j" help:"Number of tasks to run at once (default: $NIX_TASKS_JOBS, or else the number of CPUs available)"`
+	ContinueOnError bool     `help:"Continue running independent tasks on failure"`
+	Force           bool     `help:"Force re-run tasks even if cached"`
+	NoCache         bool     `help:"Disable caching (don't read or write cache)"`
+	Raw             bool     `help:"Pipe task output directly to stdout/stderr with no decoration"`
 }
 
 // Validate is called by kong after parsing.
@@ -34,6 +36,9 @@ func (c *RunCmd) Validate() error {
 		return err
 	}
 	c.Jobs = &jobs
+	if c.Raw && len(c.Tasks) > 1 {
+		return errors.New("--raw runs a single task: its output would be interleaved with the others'")
+	}
 	return nil
 }
 
@@ -67,9 +72,8 @@ func (c *RunCmd) Run(globals *Globals) error {
 	}
 	slog.Debug("config loaded", "duration", time.Since(configStart), "tasks", len(cfg.Tasks))
 
-	// Validate task exists
-	if _, ok := cfg.Tasks[c.Task]; !ok {
-		return fmt.Errorf("task not found: %s", c.Task)
+	if err := checkTasksExist(cfg, c.Tasks); err != nil {
+		return err
 	}
 
 	// Build dependency graph
@@ -98,12 +102,12 @@ func (c *RunCmd) Run(globals *Globals) error {
 		FlakeRoot:       globals.FlakeRoot,
 	})
 
-	slog.Debug("starting execution", "task", c.Task)
-	results, err := executor.Run(ctx, graph, c.Task)
+	slog.Debug("starting execution", "tasks", c.Tasks)
+	results, err := executor.Run(ctx, graph, c.Tasks...)
 	if err != nil {
 		return err
 	}
-	reporter.Summary(graph, []string{c.Task}, results)
+	reporter.Summary(graph, c.Tasks, results)
 
 	code := runExitCode(results)
 	switch {
@@ -121,13 +125,27 @@ func (c *RunCmd) Run(globals *Globals) error {
 func (c *RunCmd) newReporter(globals *Globals) ui.Reporter {
 	switch {
 	case c.Raw:
-		return ui.NewRawReporter(c.Task, os.Stdout, os.Stderr)
+		return ui.NewRawReporter(c.Tasks[0], os.Stdout, os.Stderr)
 	case globals.Verbose || os.Getenv("CI") != "":
 		return ui.NewLineReporter(os.Stdout, true)
 	case ui.IsTerminal(os.Stdout):
 		return ui.NewProgressReporter(ui.ProgressOptions{Out: os.Stdout})
 	}
 	return ui.NewLineReporter(os.Stdout, false)
+}
+
+// checkTasksExist names every requested task the config does not define.
+func checkTasksExist(cfg *config.Config, names []string) error {
+	var missing []string
+	for _, name := range names {
+		if _, ok := cfg.Tasks[name]; !ok {
+			missing = append(missing, name)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("task not found: %s", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 // resolveJobs returns how many tasks run at once: -j if given, else

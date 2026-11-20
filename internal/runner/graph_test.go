@@ -420,3 +420,32 @@ func TestTaskGraph_Dependents(t *testing.T) {
 		t.Errorf("Dependents(test) = %v, want none", got)
 	}
 }
+
+func TestTaskGraph_ExecutionOrder_SeveralTargets(t *testing.T) {
+	graph, err := runner.NewTaskGraph(map[string]config.Task{
+		"gen":    {},
+		"build":  {Depends: []string{"gen"}},
+		"lint":   {Depends: []string{"gen"}},
+		"docs":   {},
+		"notify": {After: []string{"lint"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	order, err := graph.ExecutionOrder("build", "lint")
+	if err != nil {
+		t.Fatalf("ExecutionOrder() error = %v", err)
+	}
+	want := []string{"gen", "build", "lint", "notify"}
+	if strings.Join(order, " ") != strings.Join(want, " ") {
+		t.Errorf("ExecutionOrder() = %v, want %v", order, want)
+	}
+
+	if _, err := graph.ExecutionOrder("build", "missing"); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Errorf("expected an error naming the missing task, got %v", err)
+	}
+	if _, err := graph.ExecutionOrder(); err == nil {
+		t.Error("expected an error with no targets")
+	}
+}

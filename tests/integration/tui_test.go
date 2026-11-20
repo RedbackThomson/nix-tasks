@@ -82,3 +82,24 @@ func TestTUI_PipedPrintsList(t *testing.T) {
 		t.Errorf("expected the hello task in output, got: %s", bare)
 	}
 }
+
+func TestRun_SeveralTasksInOneRun(t *testing.T) {
+	skipIfNoNix(t)
+	binary := nixTasksBinary(t)
+	flakePath := filepath.Join(testdataDir(t), "simple")
+
+	stdout, stderr, err := runNixTasks(t, binary, "run", "hello", "goodbye", "-f", flakePath)
+	if err != nil {
+		t.Fatalf("nix-tasks run failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
+	}
+	assertStatuses(t, stdout, map[string]string{"hello": "passed", "goodbye": "passed"})
+	if n := strings.Count(stdout, "Completed:"); n != 1 {
+		t.Errorf("expected one summary, got %d:\n%s", n, stdout)
+	}
+
+	_, stderr, err = runNixTasks(t, binary, "run", "hello", "nope", "-f", flakePath)
+	assertExitCode(t, err, 1)
+	if !strings.Contains(stderr, "task not found: nope") {
+		t.Errorf("expected the unknown task to be named, got: %s", stderr)
+	}
+}

@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -100,11 +101,16 @@ func (g *TaskGraph) findCycle() []string {
 }
 
 // ExecutionOrder returns tasks in topological order for execution.
-// The target task, all its dependencies, and any after-hooks (transitively)
-// will be included.
-func (g *TaskGraph) ExecutionOrder(target string) ([]string, error) {
-	if _, ok := g.tasks[target]; !ok {
-		return nil, fmt.Errorf("task not found: %s", target)
+// The targets, all their dependencies, and any after-hooks (transitively)
+// will be included, each task once.
+func (g *TaskGraph) ExecutionOrder(targets ...string) ([]string, error) {
+	if len(targets) == 0 {
+		return nil, errors.New("no target tasks")
+	}
+	for _, target := range targets {
+		if _, ok := g.tasks[target]; !ok {
+			return nil, fmt.Errorf("task not found: %s", target)
+		}
 	}
 
 	inSet := make(map[string]bool)
@@ -120,8 +126,10 @@ func (g *TaskGraph) ExecutionOrder(target string) ([]string, error) {
 		}
 	}
 
-	// Start with target and its transitive dependencies
-	collectDeps(target)
+	// Start with the targets and their transitive dependencies
+	for _, target := range targets {
+		collectDeps(target)
+	}
 
 	// Expand with after-hooks until stable
 	changed := true
@@ -152,9 +160,11 @@ func (g *TaskGraph) ExecutionOrder(target string) ([]string, error) {
 		order = append(order, name)
 	}
 
-	// Visit from target first, then any remaining tasks in the set
-	// (after-hooks may not be reachable from target via edges alone)
-	visit(target)
+	// Visit from the targets first, then any remaining tasks in the set
+	// (after-hooks may not be reachable from a target via edges alone)
+	for _, target := range targets {
+		visit(target)
+	}
 	for _, task := range sortedKeys(inSet) {
 		visit(task)
 	}
