@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -39,14 +40,54 @@ func (m Model) size() (width, height int) {
 	return width, height
 }
 
-// The main screen is a header line, the list, a status line and a key hint
-// line.
-const chromeLines = 3
+// Terminals at least this wide show the detail pane beside the list rather
+// than below it.
+const sideBySideWidth = 100
+
+// paneSeparator goes between the list and the detail pane beside it.
+const paneSeparator = " │ "
+
+// layout is where the parts of the main screen go.
+type layout struct {
+	listWidth, listRows     int
+	detailWidth, detailRows int
+	side                    bool
+}
+
+// The main screen has a header line, an optional filter line, the body, a
+// status line and a key hint line.
+func (m Model) layout() layout {
+	width, height := m.size()
+	body := height - 3
+	if m.filtering || m.filter != "" {
+		body--
+	}
+	body = max(1, body)
+
+	if width >= sideBySideWidth {
+		listWidth := width * 2 / 5
+		return layout{
+			listWidth: listWidth, listRows: body,
+			detailWidth: width - listWidth - len([]rune(paneSeparator)), detailRows: body,
+			side: true,
+		}
+	}
+	// Below the list, with a rule between them, when there is room for both.
+	if body < 10 {
+		return layout{listWidth: width, listRows: body}
+	}
+	listRows := max(3, min(body/2, len(m.visible())))
+	return layout{listWidth: width, listRows: listRows, detailWidth: width, detailRows: body - listRows - 1}
+}
 
 // listHeight is how many list rows fit on screen.
 func (m Model) listHeight() int {
+	return m.layout().listRows
+}
+
+func (m Model) graphRows() int {
 	_, height := m.size()
-	return max(1, height-chromeLines)
+	return max(1, height-2)
 }
 
 func (m Model) render() string {
@@ -63,6 +104,8 @@ func (m Model) render() string {
 		lines = m.errorLines(width, height)
 	case m.showHelp:
 		lines = helpLines()
+	case m.graphView:
+		lines = m.graphViewLines()
 	default:
 		lines = m.mainLines()
 	}
@@ -102,10 +145,86 @@ func (m Model) errorLines(width, height int) []string {
 }
 
 func (m Model) mainLines() []string {
+	l := m.layout()
 	lines := []string{m.header()}
-	lines = append(lines, m.listLines()...)
-	lines = append(lines, m.status, dimStyle.Render(m.keyHints()))
+	if m.filtering || m.filter != "" {
+		lines = append(lines, m.filterLine())
+	}
+
+	list := m.listLines(l.listWidth, l.listRows)
+	detail := clip(m.detailLines(l.detailWidth), l.detailRows)
+	switch {
+	case l.side:
+		for i, row := range list {
+			pad := strings.Repeat(" ", max(0, l.listWidth-ansi.StringWidth(row)))
+			right := ""
+			if i < len(detail) {
+				right = detail[i]
+			}
+			lines = append(lines, row+pad+dimStyle.Render(paneSeparator)+right)
+		}
+	case l.detailRows > 0:
+		lines = append(lines, list...)
+		lines = append(lines, dimStyle.Render(strings.Repeat("─", l.detailWidth)))
+		lines = append(lines, padLines(detail, l.detailRows)...)
+	default:
+		lines = append(lines, list...)
+	}
+
+	return append(lines, m.status, dimStyle.Render(m.keyHints()))
+}
+
+func (m Model) filterLine() string {
+	line := "/" + m.filter
+	if m.filtering {
+		line += "█"
+	}
+	n := len(m.visible())
+	return line + dimStyle.Render(fmt.Sprintf("  %d %s", n, plural(n, "match", "matches")))
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+func (m Model) detailLines(width int) []string {
+	name, ok := m.selected()
+	if !ok || width <= 0 {
+		return nil
+	}
+	if m.mode == ShellMode {
+		return shellDetail(name, m.config.DevShells, width)
+	}
+	return taskDetail(name, m.config.Tasks[name], width)
+}
+
+// clip cuts lines to rows, marking that some were left out.
+func clip(lines []string, rows int) []string {
+	if len(lines) <= rows {
+		return lines
+	}
+	if rows <= 0 {
+		return nil
+	}
+	return append(lines[:rows-1:rows-1], dimStyle.Render("…"))
+}
+
+func padLines(lines []string, rows int) []string {
+	for len(lines) < rows {
+		lines = append(lines, "")
+	}
 	return lines
+}
+
+func (m Model) graphViewLines() []string {
+	rows := m.graphRows()
+	lines := []string{titleStyle.Render("Graph of " + m.graphTask)}
+	end := min(len(m.graphLines), m.graphOffset+rows)
+	lines = append(lines, padLines(slices.Clone(m.graphLines[m.graphOffset:end]), rows)...)
+	return append(lines, dimStyle.Render("↑/↓ scroll · esc back · * already shown above"))
 }
 
 func (m Model) header() string {
@@ -121,8 +240,7 @@ func (m Model) header() string {
 		tab(ShellMode, "Dev Shells", len(m.shells))
 }
 
-func (m Model) listLines() []string {
-	rows := m.listHeight()
+func (m Model) listLines(width, rows int) []string {
 	items := m.visible()
 	lines := make([]string, 0, rows)
 	if len(items) == 0 {
@@ -130,15 +248,16 @@ func (m Model) listLines() []string {
 		if m.mode == ShellMode {
 			what = "dev shells"
 		}
-		lines = append(lines, dimStyle.Render("  No "+what+" defined"))
+		if m.filter != "" {
+			lines = append(lines, dimStyle.Render(fmt.Sprintf("  No %s match %q", what, m.filter)))
+		} else {
+			lines = append(lines, dimStyle.Render("  No "+what+" defined"))
+		}
 	}
 	for i := m.offset; i < len(items) && i < m.offset+rows; i++ {
-		lines = append(lines, m.itemLine(items[i], i == m.cursor))
+		lines = append(lines, ansi.Truncate(m.itemLine(items[i], i == m.cursor), width, "…"))
 	}
-	for len(lines) < rows {
-		lines = append(lines, "")
-	}
-	return lines
+	return padLines(lines, rows)
 }
 
 func (m Model) itemLine(name string, selected bool) string {
@@ -170,11 +289,13 @@ func firstLine(s string) string {
 }
 
 func (m Model) keyHints() string {
-	action := "run"
-	if m.mode == ShellMode {
-		action = "enter shell"
+	if m.filtering {
+		return "type to filter · enter keep · esc clear"
 	}
-	return "enter " + action + " · tab switch list · ? help · q quit"
+	if m.mode == ShellMode {
+		return "enter enter shell · / filter · tab tasks · ? help · q quit"
+	}
+	return "enter run · / filter · g graph · tab shells · ? help · q quit"
 }
 
 var keyHelp = [][2]string{
@@ -183,6 +304,8 @@ var keyHelp = [][2]string{
 	{"home end", "first or last item"},
 	{"tab", "switch between tasks and dev shells"},
 	{"enter, r", "run the task (or enter the dev shell)"},
+	{"/", "filter by name or description; enter keeps it, esc clears it"},
+	{"g", "show the task's dependency graph (esc to return)"},
 	{"?", "show or hide this help"},
 	{"q, ctrl+c", "quit"},
 }

@@ -289,18 +289,30 @@ When you run `nix-tasks` without arguments in a terminal, it launches an interac
 $ nix-tasks
 
 nix-tasks  Tasks (3)  Dev Shells (2)
-> build  Build the application
-  deploy  Deploy to staging
-  test  Run tests
-
+> build  Build the application            │ build
+  deploy  Deploy to staging               │ Build the application
+  test  Run tests                         │
+                                          │ Type         shell
+                                          │ Packages     go
+                                          │
+                                          │ Commands
+                                          │   go build -o bin/app ./cmd/app
 ✓ build passed · 2.3s
-enter run · tab switch list · ? help · q quit
+enter run · / filter · g graph · tab shells · ? help · q quit
 ```
 
 The UI appears straight away and evaluates the flake in the background; if
 evaluation fails, the error is shown in the UI. Move with `j/k` or the arrow
 keys (the list scrolls to fit the terminal), switch between tasks and dev
 shells with `tab`, and press `?` to see every key.
+
+The detail pane, beside the list (or below it in narrow terminals), shows the
+selected task's description, type, packages, dependencies, after-hooks, env,
+working directory, `continueOnError` and its commands or script; for a dev
+shell it shows its packages, the packages it inherits, its full `extends`
+chain and its env. `/` filters the list by name or description as you type
+(`enter` keeps the filter, `esc` clears it). `g` shows the selected task's
+dependency graph, the same tree as `nix-tasks graph`; `esc` returns.
 
 `enter` on a task hands the terminal to `nix-tasks run <task>`, so the run
 shows its usual progress output; when it finishes, press any key to return.
