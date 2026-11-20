@@ -73,6 +73,24 @@ func TestLoad(t *testing.T) {
 			},
 		},
 		{
+			name: "task: prefix on depends and after is optional",
+			eval: &fakeEvaluator{values: map[string]string{
+				sys: `{"tasks":{"a":{},"b":{"depends":["task:a"]},"c":{"depends":["a","task:b"],"after":["task:a"]}}}`,
+			}},
+			wantCalls: 1,
+			check: func(t *testing.T, cfg *config.Config) {
+				if got := cfg.Tasks["b"].Depends; !slices.Equal(got, []string{"a"}) {
+					t.Errorf("b.depends = %v, want [a]", got)
+				}
+				if got := cfg.Tasks["c"].Depends; !slices.Equal(got, []string{"a", "b"}) {
+					t.Errorf("c.depends = %v, want [a b]", got)
+				}
+				if got := cfg.Tasks["c"].After; !slices.Equal(got, []string{"a"}) {
+					t.Errorf("c.after = %v, want [a]", got)
+				}
+			},
+		},
+		{
 			name: "packages as store-path map is rejected with a hint",
 			eval: &fakeEvaluator{values: map[string]string{
 				sys: `{"packages":{"go":"/nix/store/abc-go"},"tasks":{}}`,

@@ -571,6 +571,9 @@ tasks.deploy = {
 };
 ```
 
+The `task:` prefix in `depends` and `after` is optional: `"build"` and
+`"task:build"` name the same task.
+
 #### Post-task hooks (after)
 
 Use `after` to run a task automatically whenever another task runs. This is the inverse of `depends` — instead of "I need X before me", it means "whenever X runs, also run me after it."
