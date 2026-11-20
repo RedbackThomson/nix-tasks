@@ -4,8 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
@@ -69,23 +72,10 @@ func execNix(args []string) error {
 	return nil
 }
 
-// availableShells returns a comma-separated list of available shell names
+// availableShells returns the sorted shell names, comma-separated.
 func availableShells(shells map[string]config.Shell) string {
 	if len(shells) == 0 {
 		return "(none)"
 	}
-
-	names := make([]string, 0, len(shells))
-	for name := range shells {
-		names = append(names, name)
-	}
-
-	result := ""
-	for i, name := range names {
-		if i > 0 {
-			result += ", "
-		}
-		result += name
-	}
-	return result
+	return strings.Join(slices.Sorted(maps.Keys(shells)), ", ")
 }
