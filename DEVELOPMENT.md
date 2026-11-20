@@ -69,6 +69,12 @@ helpers drop `GITHUB_ACTIONS` and `GITHUB_STEP_SUMMARY` from the child's
 environment, so the suite checks the same output when it runs inside GitHub
 Actions; tests of the github output set them explicitly.
 
+Tests check a run's results (task states, exit codes, ordering, cache hits,
+skip reasons, task output) through `--output=json` with the `runJSON` and
+`runFlakeJSON` helpers in `tests/integration/json_output_test.go`, and read
+task output from each task's log. Only tests of the human-readable output
+(progress, stream, plain, raw, GitHub and the summary tree) match text.
+
 ### Nix Library Tests
 
 `lib/tests.nix` covers the Nix library (merging, assertions, builders, shell

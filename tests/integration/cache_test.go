@@ -5,7 +5,6 @@ package integration_test
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -13,7 +12,6 @@ import (
 // config only carries package names.
 func TestRun_CacheInvalidatedByPackageChange(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 
 	config := func(pkg string) string {
 		return `{
@@ -25,18 +23,16 @@ func TestRun_CacheInvalidatedByPackageChange(t *testing.T) {
 	other := writeTempFlake(t, config("jq"), map[string]string{"in.txt": "x"})
 	cacheDir := t.TempDir()
 
-	run := func() string {
+	run := func() bool {
 		t.Helper()
-		stdout, stderr, err := runNixTasksInDir(t, binary, dir, cacheDir, "run", "t", "-f", dir)
-		if err != nil {
-			t.Fatalf("run failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
-		}
-		return stdout
+		r := runJSON(t, dir, cacheDir, "run", "t", "-f", dir)
+		r.assertCode(t, 0)
+		return r.task(t, "t").Cached
 	}
 
 	run()
-	if out := run(); !strings.Contains(out, "(cached)") {
-		t.Fatalf("expected second run to be cached, got: %s", out)
+	if !run() {
+		t.Fatal("expected second run to be cached")
 	}
 
 	flake, err := os.ReadFile(filepath.Join(other, "flake.nix"))
@@ -46,7 +42,7 @@ func TestRun_CacheInvalidatedByPackageChange(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "flake.nix"), flake, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if out := run(); strings.Contains(out, "(cached)") {
-		t.Errorf("expected run after package change to execute, got: %s", out)
+	if run() {
+		t.Error("expected run after package change to execute")
 	}
 }

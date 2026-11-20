@@ -104,6 +104,37 @@ func runJSON(t *testing.T, workDir, cacheDir string, args ...string) runResult {
 	return res
 }
 
+// runFlakeJSON runs with --output=json on flake from a fresh working
+// directory, with cacheDir as the cache.
+func runFlakeJSON(t *testing.T, flake, cacheDir string, args ...string) runResult {
+	t.Helper()
+	return runJSON(t, t.TempDir(), cacheDir, append(args, "-f", flake)...)
+}
+
+// decodeJSON decodes a document printed by a run started some other way.
+func decodeJSON(t *testing.T, stdout []byte) jsonRun {
+	t.Helper()
+	var doc jsonRun
+	if err := json.Unmarshal(stdout, &doc); err != nil {
+		t.Fatalf("stdout is not the JSON document: %v\n%s", err, stdout)
+	}
+	return doc
+}
+
+// log returns the contents of the named task's log.
+func (r runResult) log(t *testing.T, name string) string {
+	t.Helper()
+	task := r.task(t, name)
+	if task.Log == nil {
+		t.Fatalf("task %s has no log", name)
+	}
+	data, err := os.ReadFile(*task.Log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(data)
+}
+
 // task returns the named task's entry, failing the test if it is missing.
 func (r runResult) task(t *testing.T, name string) jsonTask {
 	t.Helper()

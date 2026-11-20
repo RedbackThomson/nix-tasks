@@ -113,46 +113,6 @@ func stripANSI(s string) string {
 	return ansiPattern.ReplaceAllString(s, "")
 }
 
-var summaryLinePattern = regexp.MustCompile(`^\s*(✓|✗|!|-|⏹) (\S+)(?: \(.*\))?$`)
-
-// taskStatuses parses the run summary into task name -> "passed", "failed",
-// "allowed" (failed with continueOnError), "skipped" or "interrupted".
-func taskStatuses(stdout string) map[string]string {
-	statuses := map[string]string{}
-	for _, line := range strings.Split(stripANSI(stdout), "\n") {
-		m := summaryLinePattern.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		switch m[1] {
-		case "✓":
-			statuses[m[2]] = "passed"
-		case "✗":
-			statuses[m[2]] = "failed"
-		case "!":
-			statuses[m[2]] = "allowed"
-		case "-":
-			statuses[m[2]] = "skipped"
-		case "⏹":
-			statuses[m[2]] = "interrupted"
-		}
-	}
-	return statuses
-}
-
-func assertStatuses(t *testing.T, stdout string, want map[string]string) {
-	t.Helper()
-	got := taskStatuses(stdout)
-	if len(got) != len(want) {
-		t.Errorf("expected %d tasks in summary, got %d: %v\noutput: %s", len(want), len(got), got, stdout)
-	}
-	for name, status := range want {
-		if got[name] != status {
-			t.Errorf("task %s: expected %s, got %q\noutput: %s", name, status, got[name], stdout)
-		}
-	}
-}
-
 func assertExitCode(t *testing.T, err error, want int) {
 	t.Helper()
 	got := 0
@@ -235,18 +195,6 @@ func describeSection(stdout, header string) []string {
 	return items
 }
 
-func assertBefore(t *testing.T, order []string, first, second string) {
-	t.Helper()
-	i, j := slices.Index(order, first), slices.Index(order, second)
-	if i < 0 || j < 0 {
-		t.Errorf("expected both %s and %s to run, order: %v", first, second, order)
-		return
-	}
-	if i > j {
-		t.Errorf("expected %s to run before %s, order: %v", first, second, order)
-	}
-}
-
 // skipIfNoNix skips the test if nix is not available
 func skipIfNoNix(t *testing.T) {
 	t.Helper()
@@ -311,17 +259,13 @@ func TestList_WithDependencies(t *testing.T) {
 
 func TestRun_SimpleTask(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "simple")
 
-	stdout, stderr, err := runNixTasks(t, binary, "run", "hello", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	assertStatuses(t, stdout, map[string]string{"hello": "passed"})
-	if !strings.Contains(stdout, "Completed: 1 tasks (1 passed)") {
-		t.Errorf("expected '1 tasks (1 passed)' summary, got: %s", stdout)
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "hello")
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"hello": "succeeded"})
+	if r.Doc.Counts.Passed != 1 {
+		t.Errorf("counts %+v", r.Doc.Counts)
 	}
 }
 
@@ -361,16 +305,18 @@ func TestRun_VerboseOutput(t *testing.T) {
 
 func TestRun_LinearDependencyChain(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "deps")
 	workDir := t.TempDir()
 
-	stdout, stderr, err := runNixTasksInDir(t, binary, workDir, t.TempDir(), "run", "step-c", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	r := runJSON(t, workDir, t.TempDir(), "run", "step-c", "-f", flakePath)
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"step-a": "succeeded", "step-b": "succeeded", "step-c": "succeeded"})
+	if !slices.Equal(r.names(), []string{"step-a", "step-b", "step-c"}) {
+		t.Errorf("tasks listed as %v, want dependencies first", r.names())
 	}
-
-	assertStatuses(t, stdout, map[string]string{"step-a": "passed", "step-b": "passed", "step-c": "passed"})
+	if !r.finishedBefore(t, "step-a", "step-b") || !r.finishedBefore(t, "step-b", "step-c") {
+		t.Error("each step should start after the one it depends on finishes")
+	}
 
 	order := readLines(t, filepath.Join(workDir, "order.log"))
 	if !slices.Equal(order, []string{"step-a", "step-b", "step-c"}) {
@@ -380,43 +326,39 @@ func TestRun_LinearDependencyChain(t *testing.T) {
 
 func TestRun_DiamondDependency(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "deps")
 	workDir := t.TempDir()
 
-	stdout, stderr, err := runNixTasksInDir(t, binary, workDir, t.TempDir(), "run", "top", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	r := runJSON(t, workDir, t.TempDir(), "run", "top", "-f", flakePath)
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"base": "succeeded", "left": "succeeded", "right": "succeeded", "top": "succeeded"})
+	for _, edge := range [][2]string{{"base", "left"}, {"base", "right"}, {"left", "top"}, {"right", "top"}} {
+		if !r.finishedBefore(t, edge[0], edge[1]) {
+			t.Errorf("%s should finish before %s starts", edge[0], edge[1])
+		}
 	}
-
-	assertStatuses(t, stdout, map[string]string{"base": "passed", "left": "passed", "right": "passed", "top": "passed"})
 
 	order := readLines(t, filepath.Join(workDir, "order.log"))
 	if len(order) != 4 {
 		t.Fatalf("expected each of the 4 tasks to run exactly once, got %v", order)
 	}
-	assertBefore(t, order, "base", "left")
-	assertBefore(t, order, "base", "right")
-	assertBefore(t, order, "left", "top")
-	assertBefore(t, order, "right", "top")
 }
 
 func TestRun_CompoundTask(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "deps")
 	workDir := t.TempDir()
 
-	stdout, stderr, err := runNixTasksInDir(t, binary, workDir, t.TempDir(), "run", "all", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	want := map[string]string{"all": "passed"}
+	r := runJSON(t, workDir, t.TempDir(), "run", "all", "-f", flakePath)
+	r.assertCode(t, 0)
+	want := map[string]string{"all": "succeeded"}
 	for _, task := range []string{"step-a", "step-b", "step-c", "base", "left", "right", "top"} {
-		want[task] = "passed"
+		want[task] = "succeeded"
 	}
-	assertStatuses(t, stdout, want)
+	r.assertStates(t, want)
+	if names := r.names(); names[len(names)-1] != "all" {
+		t.Errorf("the compound task should be listed after everything it groups: %v", names)
+	}
 
 	order := readLines(t, filepath.Join(workDir, "order.log"))
 	if len(order) != 7 {
@@ -430,18 +372,19 @@ func TestRun_CompoundTask(t *testing.T) {
 
 func TestRun_ParallelExecution(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "parallel")
 	workDir := t.TempDir()
 
-	stdout, stderr, err := runNixTasksInDir(t, binary, workDir, t.TempDir(), "run", "final", "-f", flakePath, "-j", "4")
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	assertStatuses(t, stdout, map[string]string{
-		"task-1": "passed", "task-2": "passed", "task-3": "passed", "task-4": "passed", "final": "passed",
+	r := runJSON(t, workDir, t.TempDir(), "run", "final", "-f", flakePath, "-j", "4")
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{
+		"task-1": "succeeded", "task-2": "succeeded", "task-3": "succeeded", "task-4": "succeeded", "final": "succeeded",
 	})
+	for _, task := range []string{"task-1", "task-2", "task-3", "task-4"} {
+		if !r.finishedBefore(t, task, "final") {
+			t.Errorf("final should start after %s finishes", task)
+		}
+	}
 
 	timings := readTimings(t, filepath.Join(workDir, "timings.log"))
 	if len(timings) != 4 {
@@ -459,17 +402,13 @@ func TestRun_ParallelExecution(t *testing.T) {
 
 func TestRun_SingleJob(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "parallel")
 	workDir := t.TempDir()
 
-	stdout, stderr, err := runNixTasksInDir(t, binary, workDir, t.TempDir(), "run", "final", "-f", flakePath, "-j", "1")
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	if !strings.Contains(stdout, "Completed: 5 tasks (5 passed)") {
-		t.Errorf("expected '5 tasks (5 passed)' summary, got: %s", stdout)
+	r := runJSON(t, workDir, t.TempDir(), "run", "final", "-f", flakePath, "-j", "1")
+	r.assertCode(t, 0)
+	if r.Doc.Counts.Passed != 5 {
+		t.Errorf("expected 5 passed tasks, got %+v", r.Doc.Counts)
 	}
 
 	timings := readTimings(t, filepath.Join(workDir, "timings.log"))
@@ -492,14 +431,18 @@ func TestRun_SingleJob(t *testing.T) {
 
 func TestRun_FailingTask(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "failing")
 
-	stdout, _, err := runNixTasks(t, binary, "run", "fail", "-f", flakePath)
-	assertExitCode(t, err, 1)
-	assertStatuses(t, stdout, map[string]string{"fail": "failed"})
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "fail")
+	r.assertCode(t, 1)
+	r.assertStates(t, map[string]string{"fail": "failed"})
+	if fail := r.task(t, "fail"); fail.ExitCode == nil || *fail.ExitCode != 1 || !strings.Contains(r.log(t, "fail"), "About to fail...") {
+		t.Errorf("failed task should have exit code 1 and its output in its log: %+v", fail)
+	}
 
-	// Failed tasks show their output even without -v.
+	// Failed tasks show their output in the summary even without -v.
+	stdout, _, err := runNixTasks(t, nixTasksBinary(t), "run", "fail", "-f", flakePath)
+	assertExitCode(t, err, 1)
 	if !strings.Contains(stdout, "About to fail...") {
 		t.Errorf("expected failing task output in summary, got: %s", stdout)
 	}
@@ -507,25 +450,18 @@ func TestRun_FailingTask(t *testing.T) {
 
 func TestRun_ContinueOnError(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "failing")
 	workDir := t.TempDir()
 
 	// Task with continueOnError should allow dependent tasks to run
-	stdout, stderr, err := runNixTasksInDir(t, binary, workDir, t.TempDir(), "run", "after-continue", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	r := runJSON(t, workDir, t.TempDir(), "run", "after-continue", "-f", flakePath)
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"fail-continue": "failed_allowed", "after-continue": "succeeded"})
+	if !strings.Contains(r.log(t, "fail-continue"), "This will fail but continue...") {
+		t.Error("the allowed failure's output should be in its log")
 	}
-
-	statuses := taskStatuses(stdout)
-	if statuses["after-continue"] != "passed" {
-		t.Errorf("expected after-continue to pass, got %v\noutput: %s", statuses, stdout)
-	}
-	if statuses["fail-continue"] != "allowed" {
-		t.Errorf("expected fail-continue to be an allowed failure, got %v\noutput: %s", statuses, stdout)
-	}
-	if !strings.Contains(stdout, "This will fail but continue...") {
-		t.Errorf("expected allowed failure output in summary, got: %s", stdout)
+	if r.Doc.Counts.AllowedFailures != 1 {
+		t.Errorf("counts %+v", r.Doc.Counts)
 	}
 
 	ran := readLines(t, filepath.Join(workDir, "ran.log"))
@@ -536,17 +472,14 @@ func TestRun_ContinueOnError(t *testing.T) {
 
 func TestRun_ContinueOnErrorFlag(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "failing")
 	workDir := t.TempDir()
 
-	stdout, _, err := runNixTasksInDir(t, binary, workDir, t.TempDir(), "run", "parallel-test", "-f", flakePath, "--continue-on-error")
-	assertExitCode(t, err, 1)
-
-	statuses := taskStatuses(stdout)
-	for name, want := range map[string]string{"independent-a": "passed", "independent-b": "failed", "independent-c": "passed"} {
-		if statuses[name] != want {
-			t.Errorf("task %s: expected %s, got %q\noutput: %s", name, want, statuses[name], stdout)
+	r := runJSON(t, workDir, t.TempDir(), "run", "parallel-test", "-f", flakePath, "--continue-on-error")
+	r.assertCode(t, 1)
+	for name, want := range map[string]string{"independent-a": "succeeded", "independent-b": "failed", "independent-c": "succeeded"} {
+		if got := r.task(t, name).State; got != want {
+			t.Errorf("task %s: state %q, want %q", name, got, want)
 		}
 	}
 
@@ -560,15 +493,17 @@ func TestRun_ContinueOnErrorFlag(t *testing.T) {
 
 func TestRun_ContinueOnErrorFlagSkipsDependents(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "failing")
 	workDir := t.TempDir()
 
-	stdout, _, err := runNixTasksInDir(t, binary, workDir, t.TempDir(), "run", "parallel-test", "-f", flakePath, "--continue-on-error")
-	assertExitCode(t, err, 1)
-	assertStatuses(t, stdout, map[string]string{
-		"independent-a": "passed", "independent-b": "failed", "independent-c": "passed", "parallel-test": "skipped",
+	r := runJSON(t, workDir, t.TempDir(), "run", "parallel-test", "-f", flakePath, "--continue-on-error")
+	r.assertCode(t, 1)
+	r.assertStates(t, map[string]string{
+		"independent-a": "succeeded", "independent-b": "failed", "independent-c": "succeeded", "parallel-test": "skipped",
 	})
+	if reason := r.task(t, "parallel-test").SkipReason; reason == nil || *reason != "independent-b failed" {
+		t.Errorf("skip reason %v, want the failed dependency", reason)
+	}
 	if ran := readLines(t, filepath.Join(workDir, "ran.log")); slices.Contains(ran, "parallel-test") {
 		t.Errorf("parallel-test depends on a failed task and should not run, ran: %v", ran)
 	}
@@ -576,15 +511,17 @@ func TestRun_ContinueOnErrorFlagSkipsDependents(t *testing.T) {
 
 func TestRun_FailFast(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "failing")
 	workDir := t.TempDir()
 
-	stdout, _, err := runNixTasksInDir(t, binary, workDir, t.TempDir(), "run", "after-fail", "-f", flakePath)
-	assertExitCode(t, err, 1)
-	assertStatuses(t, stdout, map[string]string{"fail": "failed", "after-fail": "skipped"})
-	if !strings.Contains(stdout, "1 skipped") {
-		t.Errorf("expected '1 skipped' in summary, got: %s", stdout)
+	r := runJSON(t, workDir, t.TempDir(), "run", "after-fail", "-f", flakePath)
+	r.assertCode(t, 1)
+	r.assertStates(t, map[string]string{"fail": "failed", "after-fail": "skipped"})
+	if r.Doc.Counts.Skipped != 1 {
+		t.Errorf("counts %+v", r.Doc.Counts)
+	}
+	if reason := r.task(t, "after-fail").SkipReason; reason == nil || *reason != "fail failed" {
+		t.Errorf("skip reason %v", reason)
 	}
 	if _, err := os.Stat(filepath.Join(workDir, "ran.log")); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("after-fail should not have run, ran.log stat: %v", err)
@@ -916,100 +853,54 @@ func TestRun_StreamFlag(t *testing.T) {
 
 func TestRun_CachesResults(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "simple")
-
-	// Use a shared cache directory for this test
 	cacheDir := t.TempDir()
 
-	// First run should execute the task
-	stdout1, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("first run failed: %v\nstderr: %s", err, stderr)
+	if first := runFlakeJSON(t, flakePath, cacheDir, "run", "hello").task(t, "hello"); first.Cached || first.Log == nil {
+		t.Errorf("first run should execute the task: %+v", first)
 	}
-
-	// Should not say cached
-	if strings.Contains(stdout1, "(cached)") {
-		t.Errorf("first run should not be cached, got: %s", stdout1)
+	second := runFlakeJSON(t, flakePath, cacheDir, "run", "hello")
+	if hello := second.task(t, "hello"); !hello.Cached || hello.State != "succeeded" || hello.Log != nil {
+		t.Errorf("second run should be a cache hit without a log: %+v", hello)
 	}
-
-	// Second run should use cache
-	stdout2, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("second run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	// Should say cached
-	if !strings.Contains(stdout2, "(cached)") {
-		t.Errorf("second run should be cached, got: %s", stdout2)
+	if second.Doc.Counts.Cached != 1 || second.Doc.Counts.Passed != 0 {
+		t.Errorf("counts %+v", second.Doc.Counts)
 	}
 }
 
 func TestRun_ForceBypassesCache(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "simple")
-
-	// Use a shared cache directory for this test
 	cacheDir := t.TempDir()
 
-	// First run to populate cache
-	_, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("first run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	// Run with --force should not use cache
-	stdout, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath, "--force")
-	if err != nil {
-		t.Fatalf("force run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	// Should not say cached
-	if strings.Contains(stdout, "(cached)") {
-		t.Errorf("--force should bypass cache, got: %s", stdout)
+	runFlakeJSON(t, flakePath, cacheDir, "run", "hello")
+	if hello := runFlakeJSON(t, flakePath, cacheDir, "run", "hello", "--force").task(t, "hello"); hello.Cached {
+		t.Errorf("--force should bypass cache: %+v", hello)
 	}
 }
 
 func TestRun_ShellTaskWithoutInputsNotCached(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "simple")
 
-	// "goodbye" is a shell task that intentionally has no `inputs` declared.
-	// Under the inputs-opt-in policy, it should never be reported as cached,
-	// even on repeated runs.
+	// "goodbye" is a shell task that intentionally has no `inputs` declared,
+	// so it is never cached, even on repeated runs.
 	cacheDir := t.TempDir()
-
-	for i := 0; i < 2; i++ {
-		stdout, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "goodbye", "-f", flakePath)
-		if err != nil {
-			t.Fatalf("run %d failed: %v\nstderr: %s", i+1, err, stderr)
-		}
-		if strings.Contains(stdout, "(cached)") {
-			t.Errorf("shell task without inputs should never be cached (run %d), got: %s", i+1, stdout)
+	for i := range 2 {
+		if goodbye := runFlakeJSON(t, flakePath, cacheDir, "run", "goodbye").task(t, "goodbye"); goodbye.Cached {
+			t.Errorf("shell task without inputs should never be cached (run %d)", i+1)
 		}
 	}
 }
 
 func TestRun_NoCacheDisablesCaching(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "simple")
-
-	// Use a shared cache directory for this test
 	cacheDir := t.TempDir()
 
-	// Run twice with --no-cache
-	for i := 0; i < 2; i++ {
-		stdout, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath, "--no-cache")
-		if err != nil {
-			t.Fatalf("run %d failed: %v\nstderr: %s", i+1, err, stderr)
-		}
-
-		// Should not say cached
-		if strings.Contains(stdout, "(cached)") {
-			t.Errorf("--no-cache run %d should not be cached, got: %s", i+1, stdout)
+	for i := range 2 {
+		if hello := runFlakeJSON(t, flakePath, cacheDir, "run", "hello", "--no-cache").task(t, "hello"); hello.Cached {
+			t.Errorf("--no-cache run %d should not be cached", i+1)
 		}
 	}
 }
@@ -1018,34 +909,20 @@ func TestCache_Clean(t *testing.T) {
 	skipIfNoNix(t)
 	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "simple")
-
-	// Use a shared cache directory for this test
 	cacheDir := t.TempDir()
 
-	// First run to populate cache
-	_, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("first run failed: %v\nstderr: %s", err, stderr)
-	}
+	runFlakeJSON(t, flakePath, cacheDir, "run", "hello")
 
-	// Clean the cache
 	stdout, stderr, err := runNixTasksWithCacheDir(t, binary, cacheDir, "cache", "clean", "-f", flakePath)
 	if err != nil {
 		t.Fatalf("cache clean failed: %v\nstderr: %s", err, stderr)
 	}
-
 	if !strings.Contains(stdout, "Cache cleared") {
 		t.Errorf("expected 'Cache cleared' message, got: %s", stdout)
 	}
 
-	// Run again should not be cached
-	stdout, stderr, err = runNixTasksWithCacheDir(t, binary, cacheDir, "run", "hello", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("run after clean failed: %v\nstderr: %s", err, stderr)
-	}
-
-	if strings.Contains(stdout, "(cached)") {
-		t.Errorf("run after cache clean should not be cached, got: %s", stdout)
+	if hello := runFlakeJSON(t, flakePath, cacheDir, "run", "hello").task(t, "hello"); hello.Cached {
+		t.Error("run after cache clean should not be cached")
 	}
 }
 
@@ -1084,16 +961,11 @@ func TestCache_Stats(t *testing.T) {
 
 func TestMkGoTask_BuildsGoApplication(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "gotask")
-	workDir := t.TempDir()
 
-	stdout, stderr, err := runNixTasksInDir(t, binary, workDir, t.TempDir(), "run", "build", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("nix-tasks run build failed: %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
-	}
-
-	assertStatuses(t, stdout, map[string]string{"build": "passed"})
+	r := runJSON(t, t.TempDir(), t.TempDir(), "run", "build", "-f", flakePath)
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"build": "succeeded"})
 
 	// Outputs are linked in the flake root, not the directory nix-tasks ran in.
 	link := filepath.Join(flakePath, ".nix-tasks", "build", "out")
@@ -1111,17 +983,13 @@ func TestMkGoTask_BuildsGoApplication(t *testing.T) {
 
 func TestMkGoTask_BuildsBinaryToCorrectLocation(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "gotask")
 
-	stdout, stderr, err := runNixTasks(t, binary, "run", "test", "-f", flakePath, "-v")
-	if err != nil {
-		t.Fatalf("nix-tasks run test failed: %v\nstderr: %s\nstdout: %s", err, stderr, stdout)
-	}
-
-	assertStatuses(t, stdout, map[string]string{"build": "passed", "test": "passed"})
-	if !strings.Contains(stdout, "[test] Hello from mkGoTask!") {
-		t.Errorf("expected 'Hello from mkGoTask!' from the built binary, got: %s", stdout)
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "test")
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"build": "succeeded", "test": "succeeded"})
+	if !strings.Contains(r.log(t, "test"), "Hello from mkGoTask!") {
+		t.Error("expected 'Hello from mkGoTask!' from the built binary in test's log")
 	}
 }
 
@@ -1131,52 +999,39 @@ func TestMkGoTask_BuildsBinaryToCorrectLocation(t *testing.T) {
 
 func TestRun_ModifiedCompoundTask(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "composition")
 
-	stdout, stderr, err := runNixTasks(t, binary, "run", "publish", "-f", flakePath, "-v")
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
-
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "publish")
+	r.assertCode(t, 0)
 	// Compound task deps are siblings with no ordering between them, so only
 	// check that the prepended one was pulled in.
-	assertStatuses(t, stdout, map[string]string{
-		"helm-set-app-version": "passed", "ko-publish": "passed", "helm-publish": "passed", "publish": "passed",
+	r.assertStates(t, map[string]string{
+		"helm-set-app-version": "succeeded", "ko-publish": "succeeded", "helm-publish": "succeeded", "publish": "succeeded",
 	})
-	if !strings.Contains(stdout, "[helm-set-app-version] Setting app version") {
-		t.Errorf("expected prepended task output, got: %s", stdout)
+	if !strings.Contains(r.log(t, "helm-set-app-version"), "Setting app version") {
+		t.Error("expected the prepended task's output in its log")
 	}
 }
 
 func TestRun_AppendedTaskDeps(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "composition")
 
-	stdout, stderr, err := runNixTasks(t, binary, "run", "publish-with-cleanup", "-f", flakePath, "-v")
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	assertStatuses(t, stdout, map[string]string{
-		"ko-publish": "passed", "helm-publish": "passed", "cleanup": "passed", "publish-with-cleanup": "passed",
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "publish-with-cleanup")
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{
+		"ko-publish": "succeeded", "helm-publish": "succeeded", "cleanup": "succeeded", "publish-with-cleanup": "succeeded",
 	})
 }
 
 func TestRun_PipedModifications(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "composition")
 
-	stdout, stderr, err := runNixTasks(t, binary, "run", "build", "-f", flakePath, "-v")
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	want := "[build] Pre-build step\n[build] Building...\n[build] Post-build step\n"
-	if !strings.Contains(stdout, want) {
-		t.Errorf("expected prepended, original and appended commands in order, got: %s", stdout)
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "build")
+	r.assertCode(t, 0)
+	if got, want := r.log(t, "build"), "Pre-build step\nBuilding...\nPost-build step\n"; !strings.Contains(got, want) {
+		t.Errorf("expected prepended, original and appended commands in order, log holds: %q", got)
 	}
 }
 
@@ -1214,31 +1069,18 @@ func TestDescribe_PipedModifiedTask(t *testing.T) {
 
 func TestRun_ScriptWithPrependedAndAppendedCommands(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "composition")
 
-	stdout, stderr, err := runNixTasks(t, binary, "run", "script-modified", "-f", flakePath, "-v")
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "script-modified")
+	r.assertCode(t, 0)
+	log := r.log(t, "script-modified")
 
-	// All three parts should appear: prepended commands, original script, appended commands
-	if !strings.Contains(stdout, "Before script") {
-		t.Errorf("expected 'Before script' in output, got: %s", stdout)
-	}
-	if !strings.Contains(stdout, "Script line 1") {
-		t.Errorf("expected 'Script line 1' in output, got: %s", stdout)
-	}
-	if !strings.Contains(stdout, "After script") {
-		t.Errorf("expected 'After script' in output, got: %s", stdout)
-	}
-
-	// Verify ordering
-	beforePos := strings.Index(stdout, "Before script")
-	scriptPos := strings.Index(stdout, "Script line 1")
-	afterPos := strings.Index(stdout, "After script")
-	if beforePos > scriptPos || scriptPos > afterPos {
-		t.Errorf("commands not in expected order: before=%d, script=%d, after=%d", beforePos, scriptPos, afterPos)
+	// Prepended commands, the original script and appended commands, in order.
+	beforePos := strings.Index(log, "Before script")
+	scriptPos := strings.Index(log, "Script line 1")
+	afterPos := strings.Index(log, "After script")
+	if beforePos < 0 || scriptPos < 0 || afterPos < 0 || beforePos > scriptPos || scriptPos > afterPos {
+		t.Errorf("commands missing or out of order: before=%d, script=%d, after=%d\nlog: %s", beforePos, scriptPos, afterPos, log)
 	}
 }
 
@@ -1266,94 +1108,69 @@ func TestList_AfterHooks(t *testing.T) {
 
 func TestRun_BasicAfterHook(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "after-hooks")
 
-	stdout, stderr, err := runNixTasks(t, binary, "run", "build", "-f", flakePath, "-v")
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "build")
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"build": "succeeded", "post-build": "succeeded"})
+	if !r.finishedBefore(t, "build", "post-build") {
+		t.Error("post-build should start after build finishes")
 	}
-
-	assertStatuses(t, stdout, map[string]string{"build": "passed", "post-build": "passed"})
-
-	buildPos := strings.Index(stdout, "[build] Building...")
-	postBuildPos := strings.Index(stdout, "[post-build] Post-build hook ran")
-	if buildPos < 0 || postBuildPos < 0 || buildPos > postBuildPos {
-		t.Errorf("build should run before post-build: build=%d, post-build=%d\noutput: %s", buildPos, postBuildPos, stdout)
+	if !r.task(t, "post-build").AfterHook || r.task(t, "build").AfterHook {
+		t.Error("post-build should be the run's only after-hook")
 	}
 }
 
 func TestRun_AfterHookNotTriggered(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "after-hooks")
 
-	stdout, stderr, err := runNixTasks(t, binary, "run", "unrelated", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	assertStatuses(t, stdout, map[string]string{"unrelated": "passed"})
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "unrelated")
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"unrelated": "succeeded"})
 }
 
 func TestRun_TransitiveAfterHooks(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "after-hooks")
 
-	stdout, stderr, err := runNixTasks(t, binary, "run", "chain-a", "-f", flakePath, "-v")
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	assertStatuses(t, stdout, map[string]string{"chain-a": "passed", "chain-b": "passed", "chain-c": "passed"})
-
-	aPos := strings.Index(stdout, "[chain-a] Chain A")
-	bPos := strings.Index(stdout, "[chain-b] Chain B")
-	cPos := strings.Index(stdout, "[chain-c] Chain C")
-	if aPos < 0 || bPos < 0 || cPos < 0 || aPos > bPos || bPos > cPos {
-		t.Errorf("tasks not in correct order: a=%d, b=%d, c=%d\noutput: %s", aPos, bPos, cPos, stdout)
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "chain-a")
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"chain-a": "succeeded", "chain-b": "succeeded", "chain-c": "succeeded"})
+	if !r.finishedBefore(t, "chain-a", "chain-b") || !r.finishedBefore(t, "chain-b", "chain-c") {
+		t.Error("each hook should start after the task it follows finishes")
 	}
 }
 
 func TestRun_AfterHookWithDepends(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "after-hooks")
 
 	// post-deploy is pulled in via after, and brings its own dependency setup
-	stdout, stderr, err := runNixTasks(t, binary, "run", "deploy", "-f", flakePath, "-v")
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "deploy")
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"setup": "succeeded", "deploy": "succeeded", "post-deploy": "succeeded"})
+	if !r.finishedBefore(t, "deploy", "post-deploy") {
+		t.Error("post-deploy should start after deploy finishes")
 	}
-
-	assertStatuses(t, stdout, map[string]string{"setup": "passed", "deploy": "passed", "post-deploy": "passed"})
-
-	deployPos := strings.Index(stdout, "[deploy] Deploying...")
-	setupPos := strings.Index(stdout, "[setup] Setup")
-	postDeployPos := strings.Index(stdout, "[post-deploy] Post-deploy (needed setup first)")
-	if deployPos < 0 || setupPos < 0 || postDeployPos < 0 {
-		t.Fatalf("expected output from setup, deploy and post-deploy, got: %s", stdout)
+	if !r.finishedBefore(t, "setup", "post-deploy") {
+		t.Error("post-deploy should start after setup finishes")
 	}
-	if deployPos > postDeployPos {
-		t.Errorf("deploy should run before post-deploy: deploy=%d, post-deploy=%d", deployPos, postDeployPos)
-	}
-	if setupPos > postDeployPos {
-		t.Errorf("setup should run before post-deploy: setup=%d, post-deploy=%d", setupPos, postDeployPos)
+	// setup is pulled in by the hook, but as its dependency, not as a hook.
+	for name, want := range map[string]bool{"deploy": false, "post-deploy": true, "setup": false} {
+		if got := r.task(t, name).AfterHook; got != want {
+			t.Errorf("%s: afterHook %v, want %v", name, got, want)
+		}
 	}
 }
 
 func TestRun_MultipleAfterHooksOnSameTarget(t *testing.T) {
 	skipIfNoNix(t)
-	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "after-hooks")
 
-	stdout, stderr, err := runNixTasks(t, binary, "run", "test", "-f", flakePath)
-	if err != nil {
-		t.Fatalf("nix-tasks run failed: %v\nstderr: %s", err, stderr)
-	}
-
-	assertStatuses(t, stdout, map[string]string{"test": "passed", "coverage-report": "passed", "notify": "passed"})
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "test")
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"test": "succeeded", "coverage-report": "succeeded", "notify": "succeeded"})
 }
 
 func TestDescribe_AfterHook(t *testing.T) {
