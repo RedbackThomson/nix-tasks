@@ -33,6 +33,10 @@ func (c *ValidateCmd) Run(globals *Globals) error {
 		return err
 	}
 
+	for _, w := range config.CacheWarnings(cfg) {
+		warn("%s", w)
+	}
+
 	fmt.Printf("%s Configuration is valid\n", ui.Success("✓"))
 	fmt.Printf("  Tasks: %d\n", len(cfg.Tasks))
 	fmt.Printf("  Packages: %d\n", len(cfg.Packages))

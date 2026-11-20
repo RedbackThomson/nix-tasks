@@ -21,7 +21,7 @@ let
 
   # Only cacheable tasks carry their shell's drvPath in nixTasksConfig, since
   # computing it instantiates the shell and every `list` would pay for that.
-  cacheable = task: task.type == "shell" && task.inputs != [ ] && !task.noCache;
+  cacheable = task: task.type == "shell" && task.cache != null;
 
   taskShells = lib.mapAttrs (_: task:
     pkgs.mkShell { packages = map (dep: cfg.packages.${dep}) task.deps; }
@@ -32,8 +32,11 @@ let
   withoutNulls = lib.filterAttrs (_: v: v != null);
 
   serializeTask = name: task:
-    withoutNulls (builtins.removeAttrs task [ "derivation" "_module" ])
-    // lib.optionalAttrs (cacheable task) { shellDrvPath = taskShellDrvs.${name}; };
+    lib.warnIf (task.noCache != null)
+      "nix-tasks: task '${name}': `noCache` is ignored; a task is only cached when it sets `cache`"
+      (withoutNulls (builtins.removeAttrs task [ "derivation" "_module" "inputs" "outputs" "noCache" "cache" ])
+        // lib.optionalAttrs (task.cache != null) { cache = withoutNulls (builtins.removeAttrs task.cache [ "_module" ]); }
+        // lib.optionalAttrs (cacheable task) { shellDrvPath = taskShellDrvs.${name}; });
 
   serializeShell = _: shell: withoutNulls (builtins.removeAttrs shell [ "_module" ]);
 
@@ -58,6 +61,7 @@ in
     packages = builtins.attrNames cfg.packages;
     tasks = lib.mapAttrs serializeTask cfg.tasks;
     devShells = lib.mapAttrs serializeShell cfg.devShells;
+    cacheSettings = withoutNulls (builtins.removeAttrs cfg.cacheSettings [ "_module" ]);
   };
 
   nixTasksShellDrvs = checked taskShellDrvs;

@@ -190,9 +190,7 @@ let
         after = [ ];
         commands = [ ];
         env = { };
-        inputs = [ ];
         continueOnError = false;
-        noCache = false;
       };
     };
     testMkDockerTask = {
@@ -208,9 +206,7 @@ let
         after = [ ];
         commands = [ "docker build -t app:v1 -f Dockerfile ." ];
         env = { };
-        inputs = [ ];
         continueOnError = false;
-        noCache = false;
       };
     };
     testMkDockerTaskCommandsYieldToOtherModule = {
@@ -270,34 +266,95 @@ let
 
     # Output contract
 
-    testConfigJsonShape = {
-      expr = json [
-        hello
-        { tasks.cached = { deps = [ "hello" ]; commands = [ "x" ]; inputs = [ "*.go" ]; }; }
-        { tasks.uncached = { commands = [ "x" ]; inputs = [ "*.go" ]; noCache = true; }; }
-        { tasks.built = { type = "build"; derivation = pkgs.hello; }; }
-        { devShells.default = { packages = [ "hello" ]; }; }
-      ];
-      expected = {
-        packages = [ "hello" ];
-        tasks = {
-          cached = {
-            type = "shell"; description = ""; deps = [ "hello" ]; depends = [ ]; after = [ ];
-            commands = [ "x" ]; env = { }; inputs = [ "*.go" ]; continueOnError = false; noCache = false;
-            shellDrvPath = builtins.unsafeDiscardStringContext ((eval [ hello { tasks.cached = { deps = [ "hello" ]; commands = [ "x" ]; inputs = [ "*.go" ]; }; } ]).nixTasksShellDrvs.cached);
+    testConfigJsonShape =
+      let
+        cachedTask = { deps = [ "hello" ]; commands = [ "x" ]; cache = { inputs = [ "*.go" ]; outputs = [ ]; }; };
+      in
+      {
+        expr = json [
+          hello
+          { tasks.cached = cachedTask; }
+          { tasks.uncached = { commands = [ "x" ]; }; }
+          { tasks.built = { type = "build"; derivation = pkgs.hello; }; }
+          { devShells.default = { packages = [ "hello" ]; }; }
+          { cacheSettings.maxEntriesPerTask = 16; }
+        ];
+        expected = {
+          packages = [ "hello" ];
+          tasks = {
+            cached = {
+              type = "shell"; description = ""; deps = [ "hello" ]; depends = [ ]; after = [ ];
+              commands = [ "x" ]; env = { }; continueOnError = false;
+              cache = { inputs = [ "*.go" ]; outputs = [ ]; env = [ ]; };
+              shellDrvPath = builtins.unsafeDiscardStringContext ((eval [ hello { tasks.cached = cachedTask; } ]).nixTasksShellDrvs.cached);
+            };
+            uncached = {
+              type = "shell"; description = ""; deps = [ ]; depends = [ ]; after = [ ];
+              commands = [ "x" ]; env = { }; continueOnError = false;
+            };
+            built = {
+              type = "build"; description = ""; deps = [ ]; depends = [ ]; after = [ ];
+              commands = [ ]; env = { }; continueOnError = false;
+            };
           };
-          uncached = {
-            type = "shell"; description = ""; deps = [ ]; depends = [ ]; after = [ ];
-            commands = [ "x" ]; env = { }; inputs = [ "*.go" ]; continueOnError = false; noCache = true;
-          };
-          built = {
-            type = "build"; description = ""; deps = [ ]; depends = [ ]; after = [ ];
-            commands = [ ]; env = { }; inputs = [ ]; continueOnError = false; noCache = false;
-          };
+          devShells.default = { packages = [ "hello" ]; env = { }; shellHook = ""; };
+          cacheSettings = { maxEntriesPerTask = 16; };
         };
-        devShells.default = { packages = [ "hello" ]; env = { }; shellHook = ""; };
       };
+
+    # Cache option
+
+    testCacheListsConcatenateAcrossModules = {
+      expr = lib.mapAttrs (_: v: if builtins.isList v then lib.sort lib.lessThan v else v) (task "gen" [
+        { tasks.gen = { commands = [ "gen" ]; cache = { inputs = [ "a/**" ]; outputs = [ "out" ]; env = [ "A" ]; }; }; }
+        { tasks.gen.cache = { inputs = [ "b/**" ]; outputs = [ "out2" ]; env = [ "B" ]; maxEntries = 3; }; }
+      ]).cache;
+      expected = { inputs = [ "a/**" "b/**" ]; outputs = [ "out" "out2" ]; env = [ "A" "B" ]; maxEntries = 3; };
     };
+    testCacheMkForceNullDisables = {
+      expr = (task "gen" [
+        { tasks.gen = { commands = [ "gen" ]; cache = { inputs = [ "a" ]; outputs = [ ]; }; }; }
+        { tasks.gen.cache = lib.mkForce null; }
+      ]) ? cache;
+      expected = false;
+    };
+    testCacheSettingsDefaultEmpty = {
+      expr = (json [ ]).cacheSettings;
+      expected = { };
+    };
+    testCacheRequiresOutputs = {
+      expr = configFails [ { tasks.gen = { commands = [ "gen" ]; cache.inputs = [ "a" ]; }; } ];
+      expected = true;
+    };
+    testCacheRequiresInputs = {
+      expr = configFails [ { tasks.gen = { commands = [ "gen" ]; cache = { inputs = [ ]; outputs = [ ]; }; }; } ];
+      expected = true;
+    };
+    testCacheRejectedOnBuildTask = {
+      expr = configFails [ { tasks.b = { type = "build"; derivation = pkgs.hello; cache = { inputs = [ "a" ]; outputs = [ ]; }; }; } ];
+      expected = true;
+    };
+    testCacheRejectedOnTaskWithoutCommands = {
+      expr = configFails [ { tasks.all = { depends = [ ]; cache = { inputs = [ "a" ]; outputs = [ ]; }; }; } ];
+      expected = true;
+    };
+    testCacheMaxEntriesMustBePositive = {
+      expr = configFails [ { tasks.gen = { commands = [ "gen" ]; cache = { inputs = [ "a" ]; outputs = [ ]; maxEntries = 0; }; }; } ];
+      expected = true;
+    };
+    testRemovedInputsFieldNamesReplacement = {
+      expr = builtins.tryEval (builtins.toJSON (eval [ { tasks.t = ntLib.mkTask { commands = [ "x" ]; inputs = [ "*.go" ]; }; } ]).nixTasksConfig);
+      expected = { success = false; value = false; };
+    };
+    testRemovedOutputsFieldRejected = {
+      expr = configFails [ { tasks.t = { commands = [ "x" ]; outputs = [ "out" ]; }; } ];
+      expected = true;
+    };
+    testNoCacheIgnored = {
+      expr = task "t" [ { tasks.t = { commands = [ "x" ]; noCache = true; }; } ] ? noCache;
+      expected = false;
+    };
+
     testConfigDoesNotForceBuildDerivations = {
       expr = configFails [ { tasks.b = { type = "build"; derivation = throw "forced"; }; } ];
       expected = false;

@@ -17,8 +17,6 @@
             hello = tasksLib.mkTask {
               description = "Say hello";
               commands = [ "echo 'Hello, World!'" ];
-              # Declared so this task is cacheable; cache tests rely on it.
-              inputs = [ "flake.nix" ];
             };
 
             goodbye = tasksLib.mkTask {

@@ -253,8 +253,7 @@ failures are still in the Results section and the job summary.
 
 Where the implementation differs from the sketches above:
 
-- Cache hits show `● vet cached` with no time saved: cache entries do not
-  record how long the task took.
+- Cache hits show `● vet cached` with no time saved.
 - Interrupted tasks (the first failure stops the run without
   `--continue-on-error`) get `⏹ name interrupted · 2.0s` banners and Results
   lines, and an `interrupted` count in the totals. They raise no annotation.

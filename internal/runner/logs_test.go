@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/runner"
 )
@@ -58,15 +59,14 @@ func TestRun_TaskLogs(t *testing.T) {
 }
 
 func TestRun_NoLogForTasksThatDidNotRun(t *testing.T) {
-	t.Setenv("NIX_TASKS_CACHE_DIR", t.TempDir())
 	h := newHarness(t)
 	h.opts.LogDir = t.TempDir()
-	h.opts.ProjectKey = "test"
+	h.opts.Cache = cache.Open(t.TempDir(), "test")
 	if err := os.WriteFile(filepath.Join(h.dir, "input.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	cached := sh("echo cached")
-	cached.Inputs = []string{"input.txt"}
+	cached.Cache = &config.TaskCache{Inputs: []string{"input.txt"}, Outputs: []string{}}
 	tasks := map[string]config.Task{
 		"cached": cached,
 		"bad":    sh("exit 1"),

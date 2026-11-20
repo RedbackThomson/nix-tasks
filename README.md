@@ -268,8 +268,8 @@ Commands:
   describe <task>  Show task details
   graph <task>     Show execution graph for a task
   shell [name]     Enter a development shell
-  cache clean      Clear the task cache
-  cache stats      Show cache statistics
+  cache clean      Remove this repository's cache entries (--task NAME: one task's)
+  cache stats      Show cache entries per task
   validate         Validate configuration
   tui              Launch interactive TUI (default; prints the list when piped)
   completions      Generate shell completions
@@ -348,11 +348,11 @@ $ nix-tasks run ci -j 8
 # Continue running independent tasks even if one fails
 $ nix-tasks run ci --continue-on-error
 
-# Force rebuild (bypass cache)
-$ nix-tasks run build --force
+# Run cached tasks even when nothing changed (refreshes their entries)
+$ nix-tasks run generate --force
 
-# Disable caching entirely
-$ nix-tasks run build --no-cache
+# Disable the task cache entirely
+$ nix-tasks run generate --no-cache
 
 # Stream output in real-time (default in CI; same as -v and --output=stream)
 $ nix-tasks run build --stream
@@ -634,39 +634,88 @@ command's) exit code, signals and job control behave exactly as with
 
 ### Caching
 
-nix-tasks caches shell task results that declare `inputs`, based on:
-- Task commands and configuration
-- The task shell's derivation (changes whenever any of its packages does)
-- Input file contents
+The task cache is opt-in. A shell task that sets `cache` is skipped when its
+declared inputs, its definition and its toolchain are unchanged **and** its
+declared outputs are still exactly what the last successful run left. It is
+meant for generate-style tasks (controller-gen, mock or client generation,
+`go generate`); `go build`, `ko` and `docker` have caches of their own, and
+build tasks (`type = "build"`) are never cached by nix-tasks because Nix
+already knows whether a derivation needs rebuilding.
 
-Only successful runs are cached, so a failed task always runs again. Build
-tasks are never cached by nix-tasks; Nix's own store makes an unchanged
-derivation build instantly.
+```nix
+tasks.generate = tasksLib.mkTask {
+  deps = [ "go" "controller-gen" ];
+  commands = [ "go generate ./..." ];
+  cache = {
+    inputs  = [ "apis/**/*.go" "go.mod" "go.sum" "hack/boilerplate.go.txt" "!apis/**/testdata/**" ];
+    outputs = [ "apis/**/zz_generated.*.go" "package/crds/*.yaml" ];
+    env     = [ "GOFLAGS" ];
+  };
+};
+```
+
+| Field | Required | Meaning |
+|-------|----------|---------|
+| `cache.inputs` | yes, non-empty | Globs of files whose content determines the outputs. `!pattern` excludes. |
+| `cache.outputs` | yes (`[]` allowed) | Globs of files the task writes. They are left out of the inputs and checked on every hit. `[]` is for check-only tasks. |
+| `cache.env` | no | Environment variables whose values affect the outputs (unset and empty differ). |
+| `cache.maxEntries` | no | Entries kept for this task (see below). |
+
+A task is skipped when all of these match a stored entry: `commands`/`script`,
+`env`, `workingDir` and the `cache` patterns; the system and the task shell's
+derivation (every package version); the values of `cache.env`; the content of
+every input file; and the keys of the tasks it depends on. Its outputs in the
+working tree must also hash to what that entry recorded, so after a branch
+switch, a hand edit or a deleted generated file the task runs again, and
+switching back hits the earlier entry.
+
+Patterns:
+
+- are relative to the flake root for every task, whatever its `workingDir`
+  and wherever you run `nix-tasks`; absolute paths and `..` are rejected;
+- use `**` globs; wildcards skip dot-files and dot-directories (`.git`,
+  `.direnv`), but an explicit name such as `.golangci.yml` matches;
+- never follow symlinks: a matched symlink is hashed by its target;
+- must each match at least one file, otherwise the task fails before running
+  (outputs are checked after a successful run). A pattern naming a directory
+  matches nothing; write `dir/**`. `.gitignore` is not consulted.
+
+The trust contract: a task still sees the whole working tree and environment,
+but only what it declares is hashed. If a file or variable changes your task's
+outputs, declare it.
+
+A cached task always runs when a shell task upstream of it (through `depends`
+or `after`, transitively) is not cached, since that task could change anything
+without the cache seeing it; `nix-tasks validate` and every `run` that
+schedules it print a warning. Build tasks upstream are fine: the derivation
+path of each one (evaluated, not built) is part of the downstream task's key,
+so it hits while the derivation is unchanged and runs again when it changes. It also runs uncached when an upstream
+`continueOnError` task failed. Only complete, successful runs are stored:
+failures, interrupted runs and runs during which an input file changed are
+not. After-hooks of a task still run when it is answered from the cache.
 
 ```bash
-# First run executes the task
-$ nix-tasks run lint
-✓ lint (3.2s)
+$ nix-tasks run generate
+✓ generate (41.2s)
 
-# Second run uses cache
-$ nix-tasks run lint
-✓ lint (cached)
+$ nix-tasks run generate
+✓ generate (cached)
 
-# Force re-run
-$ nix-tasks run lint --force
-✓ lint (3.1s)
-
-# Clear cache for this project
-$ nix-tasks cache clean
-Cache cleared
-
-# View cache statistics
-$ nix-tasks cache stats
-Cache Statistics:
-  Location: /Users/you/.cache/nix-tasks/abc123
-  Entries: 5
-  Size: 2.1 KB
+$ nix-tasks cache stats           # entries, size, last hit and last run per task
+$ nix-tasks cache clean --task generate
+$ nix-tasks cache clean           # every entry for this repository
 ```
+
+Entries are stored in `v2/` under the nix-tasks cache directory
+(`$NIX_TASKS_CACHE_DIR`, `$XDG_CACHE_HOME/nix-tasks` or `~/.cache/nix-tasks`)
+and shared by every checkout of a repository (git worktrees, jj workspaces,
+colocated or not, and clones of the same `origin`), so a result computed in
+one checkout is reused in another whose files match. The repository is found
+from git, or by reading the `.jj` directory, so `jj` need not be installed. Each task keeps its 8 most recently used entries;
+set `cacheSettings.maxEntriesPerTask` for the whole flake, `cache.maxEntries`
+for one task, or `NIX_TASKS_CACHE_MAX_ENTRIES` on a machine (it wins over
+both). Entries of tasks that no longer exist are removed after 30 days. The
+cache is disabled, with a warning, when `--flake` is not a local path.
 
 ### Shell Completions
 
@@ -716,14 +765,14 @@ errors.
 | `env` | attrs of strings | `{}` | Environment variables |
 | `workingDir` | string or null | `null` | Directory, relative to the flake root |
 | `continueOnError` | bool | `false` | Don't fail the run when this task fails |
-| `inputs` | list of globs | `[]` | Files hashed into the cache fingerprint |
-| `noCache` | bool | `false` | Never cache this task |
+| `cache` | attrs or null | `null` | Enables the [task cache](#caching) |
 | `derivation` | package or null | `null` | What a build task builds |
 
 Evaluation fails with a message listing every problem when a task refers to an
 unknown task or package, depends on itself, sets both `commands` and
-`script`, or is a build task with `commands`, `script`, `inputs` or
-`workingDir` (none of which affect `nix build`).
+`script`, or is a build task with `commands`, `script` or `workingDir` (none
+of which affect `nix build`). `inputs`, `outputs` and `noCache` were replaced
+by `cache`; see [docs/migration.md](docs/migration.md#task-cache).
 
 #### Basic task
 
@@ -786,14 +835,17 @@ tasks.post-build-hook = {
 
 When you run `nix-tasks run build`, both `build` and `post-build-hook` will execute, in that order; if `build` fails, the hook is skipped. After-hooks chain transitively — if another task hooks onto `post-build-hook`, it will also be included.
 
-#### Task with inputs (for caching)
+#### Cached task
 
 ```nix
-tasks.build = {
-  description = "Build the app";
-  deps = [ "go" ];
-  commands = [ "go build -o bin/app ./..." ];
-  inputs = [ "**/*.go" "go.mod" "go.sum" ];
+tasks.mocks = {
+  description = "Generate mocks";
+  deps = [ "go" "mockgen" ];
+  commands = [ "go generate ./internal/..." ];
+  cache = {
+    inputs = [ "internal/**/*.go" ];
+    outputs = [ "internal/**/mock_*.go" ];
+  };
 };
 ```
 
@@ -828,7 +880,7 @@ tasks.build = tasksLib.mkGoTask {
 are required; `version` defaults to `"0.1.0"`, `ldflags` and `tags` to `[]`.
 `env` is merged over the default `CGO_ENABLED = "0"` and set on the
 derivation. Task fields (`description`, `label`, `deps`, `depends`, `after`,
-`continueOnError`, `noCache`) are applied to the task; every other argument is
+`continueOnError`) are applied to the task; every other argument is
 passed to `buildGoModule`. Build tasks are exposed as the flake output
 `nixTasksBuilds.<system>.<task>`; `nix-tasks run` builds that attribute and
 links each derivation output into `.nix-tasks/<task>/<output>` (e.g.
@@ -893,7 +945,8 @@ modules = [
 | Replace a value | `lib.mkForce value` |
 | Add list items or script lines first | `lib.mkBefore [ ... ]` |
 | Add list items or script lines last | `lib.mkAfter [ ... ]` |
-| Append to `deps`, `depends`, `after`, `inputs`, shell `packages` | a plain list |
+| Append to `deps`, `depends`, `after`, `cache.inputs`, `cache.outputs`, `cache.env`, shell `packages` | a plain list |
+| Disable a standard's cache for a task | `tasks.<t>.cache = lib.mkForce null` |
 | Add or change `env` variables | a plain attribute set |
 | Clear a value | `lib.mkForce null` (or `[]`) |
 | Let other modules override a value without `mkForce` | `lib.mkDefault value` |

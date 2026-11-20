@@ -11,6 +11,38 @@ let
     apply = lib.unique;
   };
 
+  # Kept only so a configuration still using them gets an error (or, for
+  # noCache, a warning) that names the replacement instead of "option does
+  # not exist".
+  removedOption = mkOption {
+    type = types.raw;
+    default = null;
+    visible = false;
+    internal = true;
+  };
+
+  cacheModule = {
+    options = {
+      inputs = strList // {
+        description = "Globs, relative to the flake root, of files whose content determines the outputs. `!pattern` excludes.";
+      };
+      # Required, so that "this task writes nothing" is a decision rather than
+      # an omission; a cache block missing it is how false hits happen.
+      outputs = mkOption {
+        type = types.nullOr (types.listOf types.str);
+        default = null;
+        apply = v: if v == null then null else lib.unique v;
+        description = "Globs of the files the task writes, verified on every hit. `[ ]` for tasks that only check.";
+      };
+      env = strList // { description = "Environment variables whose values affect the outputs."; };
+      maxEntries = mkOption {
+        type = types.nullOr types.ints.positive;
+        default = null;
+        description = "Cache entries kept for this task. Overrides `cacheSettings.maxEntriesPerTask`.";
+      };
+    };
+  };
+
   taskModule = { name, ... }: {
     options = {
       description = mkOption {
@@ -50,11 +82,14 @@ let
         type = types.bool;
         default = false;
       };
-      inputs = strList // { description = "Glob patterns hashed into the task's cache fingerprint."; };
-      noCache = mkOption {
-        type = types.bool;
-        default = false;
+      cache = mkOption {
+        type = types.nullOr (types.submodule cacheModule);
+        default = null;
+        description = "Enables the task cache: the task is skipped while its inputs, definition, toolchain and outputs are unchanged.";
       };
+      inputs = removedOption;
+      outputs = removedOption;
+      noCache = removedOption;
       derivation = mkOption {
         type = types.nullOr types.package;
         default = null;
@@ -112,8 +147,29 @@ let
         message = "task '${name}': sets both `commands` and `script`; set only one";
       }
       {
-        assertion = !(buildOnly "commands" || buildOnly "script" || buildOnly "inputs" || (isBuild && task.workingDir != null));
-        message = "task '${name}': build tasks run `nix build` on their derivation, so `commands`, `script`, `inputs` and `workingDir` have no effect; remove them";
+        assertion = !(buildOnly "commands" || buildOnly "script" || (isBuild && task.workingDir != null));
+        message = "task '${name}': build tasks run `nix build` on their derivation, so `commands`, `script` and `workingDir` have no effect; remove them";
+      }
+      {
+        assertion = task.inputs == null && task.outputs == null;
+        message = "task '${name}': `inputs` and `outputs` moved to `cache.inputs` and `cache.outputs`, and `cache.outputs` is now required";
+      }
+    ] ++ lib.optionals (task.cache != null) [
+      {
+        assertion = !isBuild;
+        message = "task '${name}': build tasks cannot set `cache`; Nix already decides whether a derivation needs rebuilding";
+      }
+      {
+        assertion = task.commands != [ ] || task.script != null;
+        message = "task '${name}': sets `cache` but has no `commands` or `script` to cache";
+      }
+      {
+        assertion = task.cache.inputs != [ ];
+        message = "task '${name}': `cache.inputs` must list at least one pattern";
+      }
+      {
+        assertion = task.cache.outputs != null;
+        message = "task '${name}': `cache.outputs` is required; use `[ ]` for a task that writes no files";
       }
     ];
 
@@ -147,6 +203,16 @@ in
     };
     devShells = mkOption {
       type = types.attrsOf (types.submodule shellModule);
+      default = { };
+    };
+    cacheSettings = mkOption {
+      type = types.submodule {
+        options.maxEntriesPerTask = mkOption {
+          type = types.nullOr types.ints.positive;
+          default = null;
+          description = "Cache entries kept per task (default 8). `cache.maxEntries` and NIX_TASKS_CACHE_MAX_ENTRIES override it.";
+        };
+      };
       default = { };
     };
     assertions = mkOption {

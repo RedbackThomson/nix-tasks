@@ -54,15 +54,16 @@ together.
 | `overrideCommands cmds task` | `tasks.<t>.commands = lib.mkForce cmds;` (and `script = lib.mkForce null;` if the base used `script`) |
 | `mergeEnv vars task` | `tasks.<t>.env = vars;` |
 | `overrideEnv vars task` | `tasks.<t>.env = lib.mkForce vars;` |
-| `appendInputs` / `overrideInputs` | `tasks.<t>.inputs = [...]` / `lib.mkForce [...]` |
+| `appendInputs` / `overrideInputs` | `tasks.<t>.cache.inputs = [...]` / `lib.mkForce [...]` (the task needs a full `cache` block; see [Task cache](#task-cache)) |
 | `setDescription d` | `tasks.<t>.description = d;` (`lib.mkForce d` if the base sets a plain description) |
-| `setWorkingDir` / `setNoCache` / `setContinueOnError` | Set the field (with `lib.mkForce` if the base sets a different plain value) |
+| `setWorkingDir` / `setContinueOnError` | Set the field (with `lib.mkForce` if the base sets a different plain value) |
+| `setNoCache` | `tasks.<t>.cache = lib.mkForce null;` (tasks are uncached unless they set `cache`) |
 | `pipe task [ ... ]` | One module defining each field |
 | `mkGoTask { name = ...; }` | `pname` (required); `name` is gone |
 | `mkGoTask { vendorSha256 = ...; }` | `vendorHash` |
 | `mkGoTask { ldflags = "-s -w"; }` | `ldflags = [ "-s" "-w" ];` (default `[]`) |
 | `mkGoTask { env = ...; }` adding to the task's env | `env` is set on the derivation only |
-| `mkGoTask { workingDir = ...; }` | Remove it: build tasks reject `workingDir`, `commands`, `script` and `inputs` |
+| `mkGoTask { workingDir = ...; }` | Remove it: build tasks reject `workingDir`, `commands`, `script` and `cache` |
 | `mkTask { name = ...; }`, `mkCompoundTask { name = ...; }` | Remove `name`; the attribute name is the task name |
 | `devShells.<s>.env.shellHook = ...` (hijacked `mkShell` args) | `devShells.<s>.shellHook = ...`; `env` only sets environment variables |
 | Repo dev shells adding the CLI via `overrideAttrs` | `packages.nix-tasks = nix-tasks.packages.${pkgs.stdenv.hostPlatform.system}.default;` and list `"nix-tasks"` in the shell's `packages` |
@@ -75,8 +76,8 @@ together.
   Identical definitions are allowed.
 - **Lists concatenate.** A repository that defines `devShells.default.packages`
   adds to the standard's list instead of replacing it; use `lib.mkForce` to
-  replace. `deps`, `depends`, `after`, `inputs` and shell `packages` are
-  de-duplicated.
+  replace. `deps`, `depends`, `after`, `cache.inputs`, `cache.outputs`,
+  `cache.env` and shell `packages` are de-duplicated.
 - **Scalar conflicts are errors.** If two modules give `description`,
   `continueOnError`, `workingDir` etc. different plain values, evaluation
   fails. Standards should use `lib.mkDefault` for values repositories are
@@ -91,9 +92,9 @@ together.
   run after themselves. All problems are reported together.
 - **`commands` plus `script` on one task is an error** (previously `script`
   silently won).
-- **`nixTasksConfig.packages` is a list of names.** The cache fingerprint uses
-  the task shell's `drvPath` (`shellDrvPath`, emitted only for cacheable
-  tasks) instead of package store paths. Existing cache entries miss once.
+- **`nixTasksConfig.packages` is a list of names.** The cache key uses the
+  task shell's `drvPath` (`shellDrvPath`, emitted only for tasks that set
+  `cache`) instead of package store paths.
 - **Builders return partial definitions.** Their invented defaults
   (`mkGoTask`'s description, `mkDockerTask`'s command, `mkMakeTask`'s
   description) are `mkDefault`, so a builder in one module no longer resets
@@ -101,6 +102,31 @@ together.
 - **`nixTasksShells` is gone.** The CLI runs shell tasks from
   `nixTasksShellDrvs.<system>.<task>`, each task shell's `drvPath`, which
   covers only shell tasks. Drop any `nixTasksShells` output you define.
+
+## Task cache
+
+Caching is opt-in through a `cache` block, which must say what the task reads
+and what it writes:
+
+```nix
+tasks.generate = tasksLib.mkTask {
+  commands = [ "go generate ./..." ];
+  cache = {
+    inputs = [ "apis/**/*.go" "go.mod" "go.sum" ];
+    outputs = [ "apis/**/zz_generated.*.go" ];   # [ ] for tasks that write nothing
+  };
+};
+```
+
+| Old | Now |
+|-----|-----|
+| `inputs = [ ... ]` on a task | Evaluation error: move it to `cache.inputs` and add `cache.outputs` |
+| `outputs` on a shell task | Evaluation error with the same pointer |
+| `noCache = true` | Evaluation warning; ignored, since tasks are uncached unless they set `cache` |
+| Build tasks cached by nix-tasks | Never cached: they always run `nix build`, which is a no-op when the store path exists |
+| Entries in `~/.cache/nix-tasks/<hash>/` | Ignored; removed by `nix-tasks cache clean` |
+
+See the Caching section of the README for how hits are decided.
 
 ## Full example: `examples/app-using-standards`
 
@@ -383,7 +409,10 @@ together.
                 "       --go-grpc_out=. --go-grpc_opt=paths=source_relative \\"
                 "       api/v1/*.proto"
               ];
-              inputs = [ "api/**/*.proto" ];
+              cache = {
+                inputs = [ "api/**/*.proto" ];
+                outputs = [ "api/**/*.pb.go" ];
+              };
             };
 
             build-frontend = tasksLib.mkTask {
@@ -392,7 +421,6 @@ together.
               commands = [
                 "cd frontend && npm ci && npm run build"
               ];
-              inputs = [ "frontend/**/*" ];
             };
 
             docker-build = tasksLib.mkTask {

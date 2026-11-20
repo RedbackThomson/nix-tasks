@@ -52,9 +52,13 @@ generate = lib.mkTask {
 | `cache.inputs` | list of glob | yes, non-empty | Files whose content determines the outputs. `!pattern` excludes. |
 | `cache.outputs` | list of glob | yes, may be `[]` | Files the task writes. Excluded from inputs; verified on hit. `[]` is for check-only tasks (e.g. a schema linter). |
 | `cache.env` | list of names | no (default `[]`) | Environment variables whose values affect the outputs. |
+| `cache.maxEntries` | positive int or `null` | no | Entries kept for this task (see [Eviction](#eviction)). |
 
 `outputs` must be written out even when empty so that "this task produces
-nothing" is a stated decision rather than an omission.
+nothing" is a stated decision rather than an omission. In the module system
+`cache` is a `nullOr (submodule ...)` option of each task, and
+`cacheSettings.maxEntriesPerTask` is a top-level option; both are serialised
+into `nixTasksConfig` (`cacheSettings` only when set).
 
 ### Go types
 
@@ -66,16 +70,26 @@ type Task struct {
 }
 
 type TaskCache struct {
-    Inputs  []string `json:"inputs"`
-    Outputs []string `json:"outputs"`
-    Env     []string `json:"env"`
+    Inputs     []string `json:"inputs"`
+    Outputs    []string `json:"outputs"`   // nil when omitted: a validation error
+    Env        []string `json:"env,omitempty"`
+    MaxEntries int      `json:"maxEntries,omitempty"`
+}
+
+type CacheSettings struct {
+    MaxEntriesPerTask int `json:"maxEntriesPerTask,omitempty"`
 }
 ```
 
-`Task.Inputs` and `Task.NoCache` are removed. `Task.Outputs` stays as the
-build-task output map and is no longer accepted from shell tasks.
+`Task.Inputs` and `Task.NoCache` are removed. There is no `outputs` task
+option; setting one is the migration error below.
 
 ### Validation (`config.Validate`, also surfaced by `nix-tasks validate`)
+
+The structural rules (build task, no commands, empty inputs, missing outputs,
+positive `maxEntries`) are module assertions in `lib/module.nix` and are
+checked again by `config.Validate`, which also owns the pattern and variable
+name rules. Warnings come from `config.CacheWarnings`.
 
 | Rule | Severity |
 |------|----------|
@@ -88,40 +102,28 @@ build-task output map and is no longer accepted from shell tasks.
 | Input pattern begins with `**` | warning (walks the whole tree) |
 | Pattern ends in `/` | warning (directories contribute nothing; use `dir/**`) |
 | `ShellDrvPath` missing on a cached task | error (Nix library too old) |
-| A cached task has an uncached task anywhere upstream (`depends` or `after`, transitively) | warning; the task always runs (see [Eligibility](#5-hit-and-store-algorithm)) |
+| A cached task has an uncached shell task anywhere upstream (`depends` or `after`, transitively, also through build tasks) | warning; the task always runs (see [Eligibility](#5-hit-and-store-algorithm)) |
 
 Pattern-matches-nothing is checked at run time, not here, because it depends on
 the working tree.
 
 ### Composition
 
-The deep merge in `lib/compose.nix` already recurses into attrsets, so the
-markers work without changes:
+`cache` is an ordinary module option, so the module system's rules apply:
 
 ```nix
-tasks.generate.cache.inputs = append [ "hack/extra.txt" ];
-tasks.generate.cache.env    = override [ ];
-tasks.generate.cache        = override null;   # disable caching from a standard
+tasks.generate.cache.inputs = [ "hack/extra.txt" ];   # lists concatenate
+tasks.generate.cache.env    = lib.mkForce [ ];        # replace a list
+tasks.generate.cache        = lib.mkForce null;       # disable a standard's cache
 ```
 
-`tasks.generate.cache = null` does **not** disable caching: `mergeAttrs` treats a
-`null` overlay as "keep the base value". This is documented next to the example.
-
-Modifiers in `lib/modifiers.nix`:
-
-| Modifier | Effect |
-|----------|--------|
-| `setCache { inputs; outputs; env ? []; }` | Enable or replace the cache block |
-| `disableCache` | `cache = null` |
-| `appendCacheInputs` / `overrideCacheInputs` | Edit `cache.inputs`; throws if `cache` is `null` |
-| `appendCacheOutputs` / `overrideCacheOutputs` | Edit `cache.outputs`; throws if `cache` is `null` |
-| `appendCacheEnv` | Edit `cache.env`; throws if `cache` is `null` |
-
-The append modifiers throw on an uncached task rather than create a cache block,
-because a half-declared cache (inputs but no thought-through outputs) is exactly
-what produces false hits. `appendInputs`, `overrideInputs` and `setNoCache` are
-kept as stubs that throw a message naming the replacement (see
-[Migration](#8-migration)).
+A plain `tasks.generate.cache = null` beside a standard's non-null definition
+is a conflict error, not a way to disable caching; `lib.mkForce null` is.
+Adding `cache.inputs` to a task whose standard declares no cache creates a
+cache block without `outputs`, which fails the "outputs required" assertion:
+a half-declared cache (inputs but no thought-through outputs) is exactly what
+produces false hits. There are no cache modifiers; the module system's
+`mkForce`, `mkBefore` and `mkAfter` cover them.
 
 ## 3. Cache Key
 
@@ -138,7 +140,7 @@ that differ.
 | `toolchain` | `system`, `shellDrvPath` | The task runs inside `mkShell`, so the drv covers every package version, stdenv, and setup hooks. Package store paths alone (today's approach) miss stdenv and silently drop unknown names. |
 | `env` | For each name in `cache.env`, sorted: name, set/unset flag, value | The flag distinguishes unset from empty. Values are hashed into the key but never written to the store in clear (they can be tokens). |
 | `inputs` | Sorted list of (flake-root-relative path, file kind, sha256 of content) for files matched by `inputs`, minus `!` exclusions, minus files matched by `outputs` | Content, not mtime, so `git checkout` back and forth hits. Excluding outputs stops generated files that live beside sources (`zz_generated.*.go` under `apis/**/*.go`) from invalidating their own entry. |
-| `upstream` | Sorted list of (task name, upstream digest) for each direct graph edge (`depends` and `after` targets) | Every upstream is itself cached (a task with an uncached upstream is never eligible), so each contributes its full key and a change anywhere up the chain propagates. |
+| `upstream` | Sorted list of (task name, upstream digest) for each direct graph edge (`depends` and `after` targets) | Every shell task upstream is itself cached (a task with an uncached shell upstream is never eligible), so each contributes its full key and a change anywhere up the chain propagates. A build task contributes `BuildKey` = sha256 of its derivation path and its own upstream keys: Nix changes the drvPath whenever anything the derivation is built from changes. |
 
 `key = sha256(frame("nix-tasks-cache", formatVersion) ‖ frame("definition", d) ‖ frame("toolchain", t) ‖ frame("env", e) ‖ frame("inputs", i) ‖ frame("upstream", u))`
 
@@ -193,27 +195,37 @@ small next to `nix develop` start-up. A stat-based fast path keyed on
 (size, mtime, inode, ctime) is **not** in v1: it adds a second source of truth
 with known races (files modified within the mtime granularity of the previous
 hash), and there is no evidence yet that hashing dominates. v1 logs hashing
-time per task at debug level and in `--explain`; the entry format reserves a
-`stat` field so a fast path can be added without a format bump if the numbers
-justify it.
+time per task at debug level; a fast path can add an optional entry field
+without a format bump if the numbers justify it.
 
 ## 5. Hit and Store Algorithm
 
 For each task the scheduler starts, `runTask` does:
 
+Implementation: `planCache` (in `internal/runner/cache.go`) decides
+eligibility when the ready-queue scheduler starts a task, from the results and
+keys of its finished dependencies; the scheduler's main loop records each
+finished task's key, so no mutex is needed. `runTask` then does steps 2–5.
+
 1. **Eligibility.** The task is cache-eligible iff it has `cache`, `--no-cache` is
-   not set, the flake is local, every task upstream of it (transitively) also
-   has `cache`, and every upstream task finished as `Succeeded` (ran or hit).
-   An uncached upstream can change anything without nix-tasks seeing it, so a
-   task downstream of one always runs. `validate` warns about this, and so does
+   not set, the flake is local, every shell task upstream of it (transitively)
+   also has `cache`, and every upstream task finished as `Succeeded` (ran or
+   hit). An uncached shell upstream can change anything without nix-tasks
+   seeing it, so a task downstream of one always runs. Build tasks upstream
+   are allowed: before the first task starts, the runner evaluates the
+   `nixTasksBuilds.<system>.<task>.drvPath` of every build task upstream of a
+   cached task in the run, in one `nix eval` that instantiates but does not
+   build, and a build task that succeeds publishes `BuildKey` as its key. If
+   that evaluation fails, dependents run uncached. `validate` warns about this, and so does
    every `run` that schedules such a task, before any task starts:
-   `warning: generate has cache enabled but always runs: it depends on tools-install, which is not cached`.
+   `nix-tasks: warning: generate has cache enabled but always runs: it depends on tools-install, which is not cached`.
    If any upstream is `FailedAllowed`, the task runs uncached: its upstream's
    products may be partial.
 2. **Key.** Compute the five components. Upstream keys come from a
-   `map[string]string` on the executor, written under a mutex when each task
-   finishes, so a task skipped by a hit still publishes its key. Pattern errors
-   fail the task here.
+   `map[string]string` kept by the scheduler and filled when each task
+   finishes, so a task skipped by a hit still publishes its key. A task that
+   ran but was not stored because its inputs changed mid-run publishes no
+   key, so its dependents run uncached. Pattern errors fail the task here.
 3. **Lookup** (skipped with `--force`). Read every entry for this task whose key
    matches. Hit iff one exists **and** the current output digest equals the one
    it recorded. A hit touches the entry's `lastUsed` and returns
@@ -224,6 +236,9 @@ For each task the scheduler starts, `runTask` does:
    files and do not store (the run may have seen a mix, or the task writes to its
    own inputs, which would otherwise miss forever). Hash outputs, then write the
    entry atomically. A store failure is a warning, never a task failure.
+   Output patterns matching nothing after a successful run fail the task, and
+   are checked before the inputs are re-hashed. Warnings travel on
+   `TaskResult.Warnings` and are printed by the reporter.
 
 | Situation | Behaviour |
 |-----------|-----------|
@@ -235,6 +250,7 @@ For each task the scheduler starts, `runTask` does:
 | `--force` | No lookup; stores on success, refreshing the entry. |
 | `--no-cache` | No hashing, lookup or store. Pattern errors are not raised. |
 | `--raw` target hits | Prints `<task>: cached` to stderr so the user isn't left with silent output. |
+| `--flake` is not a local path | No hashing, lookup or store; one warning before the run. |
 | Two processes, same task | Each may run; both stores are atomic; last rename wins with equivalent content. |
 
 Output verification is what makes this safe without restore: after a branch
@@ -262,8 +278,19 @@ reuse each other's results. That is safe because nothing in the key depends on
 where the checkout lives: input paths are flake-root-relative, and a hit still
 requires the outputs in *this* checkout to match. `projectKey` only groups
 entries for eviction and `cache stats`. It is `sha256` of the first of these that
-exists: the normalised `origin` remote URL, the git common directory (shared by
-all worktrees of one clone), or the absolute flake path.
+exists:
+
+1. the normalised `origin` remote URL (`git config remote.origin.url`);
+2. the git common directory (shared by all worktrees of one clone);
+3. for a jj repository that is not colocated with git, found by walking up from
+   the flake root to a `.jj` directory: the `origin` URL of its git backend
+   (`.jj/repo/store/git_target` names the git directory, whose `config` is
+   read), so its workspaces share entries with git clones of the same remote;
+   otherwise the repository directory itself. The workspace that created the
+   repository holds it in `.jj/repo`; every other workspace's `.jj/repo` is a
+   file naming that directory, relative to its own `.jj` directory or
+   absolute. This is read from the filesystem, so `jj` need not be installed;
+4. the absolute flake path.
 
 The directory is versioned (`v2/`) so the current flat layout can be removed
 wholesale and so a future incompatible layout can sit beside this one.
@@ -313,6 +340,7 @@ winning:
 | Environment | `NIX_TASKS_CACHE_MAX_ENTRIES=4` | A machine with little disk, or CI. Overrides both. |
 
 There is no user-level config file today, and this doesn't justify adding one.
+An invalid `NIX_TASKS_CACHE_MAX_ENTRIES` (not a positive integer) is ignored.
 Concurrent processes can evict an entry another has just written; the only cost
 is a later miss. Entries
 for tasks that no longer exist are removed by `cache clean` or, opportunistically,
@@ -323,7 +351,7 @@ whose `lastUsed` is older than 30 days).
 
 | Command | Behaviour |
 |---------|-----------|
-| `cache clean` | Remove this project's `v2/` entries and any legacy flat entries. |
+| `cache clean` | Remove this project's `v2/` entries and any legacy flat entries of this flake. |
 | `cache clean --task NAME` | Remove one task's entries. |
 | `cache stats` | Per task: entries, size, last hit, last run duration; totals. |
 
@@ -354,10 +382,15 @@ debug level on every miss, so `--debug` users get it without the flag.
 - Progress display and tree output keep the existing `✓ name (cached)` line and
   add the saved time from `runDuration`: `✓ generate (cached, 41s saved)`.
 - The summary gains a count: `Completed: 5 tasks (3 passed, 2 cached)`.
-- `describe` gains a `Cache:` section listing inputs, outputs and env, or
+- `describe` gains a `Cache:` section listing inputs, outputs, env and the
+  effective max entries (plus the always-runs warning when it applies), or
   `Cache: disabled`. It does not hash anything; current hit/miss status is
   `run --explain`'s job.
-- `graph` labels cached tasks the same way the tree output does.
+- `graph` marks tasks that declare a cache with `(cache)`; it does not run
+  anything, so it cannot say whether they would hit.
+- `TaskResult` carries `Cached`, `Saved` (the stored run's duration),
+  `Cache` (the decision: uncached reason, forced, miss explanation, stored)
+  and `Warnings`, which is everything a reporter needs.
 
 ## 8. Migration
 
@@ -367,34 +400,34 @@ otherwise be swallowed silently and users would believe a task is cached when it
 isn't.
 
 | Old | New behaviour |
-|-----|---------------|
-| `inputs` on `mkTask`/`mkShellTask` | Nix `throw`: "`inputs` moved to `cache.inputs`; `cache.outputs` is now required". |
-| `outputs` on shell tasks | Nix `throw` with the same pointer. Fixes the list-vs-map decode failure. |
-| `noCache` on any builder | `lib.warn` and ignored; caching is off unless `cache` is set. |
-| `appendInputs` / `overrideInputs` / `setNoCache` | Throw, naming the replacement modifier. |
-| Raw task attrsets passed to `evalConfig` | `types.validateConfig` applies the same checks, so hand-written tasks can't bypass them. |
+|-----|---------------------|
+| `inputs` on any task or builder | Module assertion: "`inputs` and `outputs` moved to `cache.inputs` and `cache.outputs`, and `cache.outputs` is now required". |
+| `outputs` on any task | The same assertion. |
+| `noCache` on any task or builder | `lib.warn` and ignored; caching is off unless `cache` is set. |
+| `appendInputs` / `overrideInputs` / `setNoCache` | Already removed with the modifiers; `docs/migration.md` maps them to `cache.inputs` and `cache = lib.mkForce null`. |
+| Raw task attrsets passed to `evalConfig` | Checked by the same module assertions: builders are pass-through, so there is nothing to bypass. |
 | Build-task caching | Removed. Build tasks always run `nix build` (a no-op when the store path exists) and always re-link outputs. |
 | Legacy cache files | Ignored; removed by `cache clean`. |
 
-Files to update: `README.md` (inputs/outputs example around line 450, modifier
-table), `docs/requirements.md` section 9, `examples/demo/flake.nix` (shell tasks
-with `inputs`/list `outputs`), `tests/integration/testdata/simple/flake.nix`
-(`hello` uses `inputs`), `lib/{builders,types,modifiers,default}.nix`,
-`internal/cache/cache_test.go`, and the cache tests in
-`tests/integration/integration_test.go`. The demo's `build-app` and
-`build-frontend` lose caching entirely; the demo gains a `generate` task showing
-the intended use.
+The removed fields stay declared as hidden options (`types.raw`, default
+`null`) only so that setting one produces the assertion above instead of the
+module system's "option does not exist".
+
+Files updated: `README.md`, `docs/requirements.md` section 9,
+`docs/migration.md`, the examples (the demo's `generate` task is cached; its
+`build-app`/`build-frontend` tasks lose caching), `lib/{module,eval,builders,tests}.nix`,
+the `simple` integration fixture, and the cache integration tests, which move
+to `tests/integration/cache_test.go`.
 
 ## 9. Prerequisites
 
-| Planned work | What the cache needs | Blocking? |
-|--------------|----------------------|-----------|
-| (c) Resolve paths against the flake root | `workingDir` and glob roots must be the same directory the command actually runs in. Today `cmd.Dir = task.WorkingDir` resolves against the process cwd, so the files hashed and the files read could differ. | **Yes.** Land first. |
-| (d) Export task shell `drvPath` | `nixTasksConfig.tasks.<name>.shellDrvPath = nixTasksShells.<name>.drvPath`, emitted only when `task.cache != null` so config load does not instantiate a shell per task. Whether tasks later run via `nix print-dev-env` is orthogonal; the key uses the same drv either way. | **Yes** for the `toolchain` component. Small; can ship with the cache. |
-| (b) Explicit result states | Store only on `Succeeded`; gate eligibility on upstream `Succeeded`; report hits as `Succeeded{Cached}`. Today `continueOnError` failures are turned into `nil` errors inside `runTask` and are indistinguishable from success downstream. | **Yes.** Land before or with the cache. |
-| (a) Ready-queue scheduler | A task's key must be published before any dependent starts. Both the level-based and ready-queue schedulers guarantee this; the cache only needs a shared key map. | No. Either order works; the ready queue makes hits pay off sooner (a hit frees its dependents immediately rather than at the end of the level). |
-
-Order: (c) → (b) → the cache (including (d)) → (a) whenever ready.
+All of these landed before the cache: tasks run in the flake root (relative
+`workingDir`s resolve against it), result states are explicit
+(`Succeeded`/`Failed`/`FailedAllowed`/`Skipped`/`Interrupted`), the scheduler
+is a ready queue, and task shells run via `nix print-dev-env` keyed by the
+shell's drvPath. `nixTasksConfig.tasks.<name>.shellDrvPath` is emitted only
+for tasks that set `cache`, so loading the config does not instantiate a
+shell per task.
 
 ## 10. Test Plan
 
@@ -437,9 +470,10 @@ and dependents ineligible; cancelled context not stored; hit publishes key to
 dependents; `--force` stores; `--no-cache` neither reads nor writes nor errors on
 bad patterns; inputs modified during the run → not stored.
 
-### Integration (`tests/integration`, new `testdata/cache` flake)
+### Integration (`tests/integration/cache_test.go`, `testdata/cache/tasks.nix`)
 
-The flake has a `generate` task that concatenates `src/*.txt` into `gen/out.txt`
+Each test copies the `testdata/cache` module into a temporary flake, because
+the tests edit inputs and outputs. The module has a `generate` task that concatenates `src/*.txt` into `gen/out.txt`
 and appends a line to a counter file, so tests can count real executions.
 
 | Test | Assertion |
@@ -470,17 +504,25 @@ blob storage can be added later without changing the key.
 
 1. **Zero-match patterns** fail the task before its command runs. No optional
    patterns in v1.
-2. **Uncached upstream tasks** make a cached task always run, with a warning
-   from `validate` and at the start of every `run` that schedules it.
-3. **One cache per repository**, shared across worktrees, workspaces and clones.
+2. **Uncached upstream shell tasks** make a cached task always run, with a
+   warning from `validate` and at the start of every `run` that schedules it.
+   **Build tasks upstream do not**: their derivation path is part of the
+   downstream key, so the cached task hits while the derivation is unchanged.
+3. **One cache per repository**, shared across git worktrees, jj workspaces
+   (colocated or not) and clones of the same remote.
 4. **After-hooks** run when their target is a cache hit.
 5. **Retention** is 8 entries per task by default, configurable per flake, per
    task and per machine; 30-day orphan cleanup; no global size cap in v1.
 6. **Check-only tasks** (`outputs = []`) may be cached.
 
-## Open Questions
+## Deviations from the original plan
 
-1. The composition examples in [Composition](#composition) use the current
-   `extend` markers and modifiers. The module-system migration replaces those
-   (`lib.mkForce null` disables a standard's cache; list options concatenate);
-   this section is rewritten once that lands.
+- `script = null` and `script = ""` cannot be told apart once decoded into
+  Go, so the definition component frames `script` and `workingDir` as present
+  only when non-empty. It makes no difference to a cached task: the module
+  assertions forbid `script` with `commands`, and a task with neither cannot
+  set `cache`.
+- Entries record each build-task dependency's drvPath (`detail.upstreamDrvs`),
+  so `--explain` reports `upstream changed: tool (derivation)` when it changed.
+- `cache stats` reports "last hit" from a `lastHit` entry field set only by
+  hits; `lastUsed` also moves on stores.

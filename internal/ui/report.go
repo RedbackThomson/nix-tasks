@@ -92,6 +92,22 @@ func resultDetail(r runner.TaskResult) string {
 	return detail
 }
 
+// ShortDuration formats a duration without parentheses, to the precision
+// worth reading: "350ms", "4.1s", "41s", "2m5s".
+func ShortDuration(d time.Duration) string {
+	switch {
+	case d < time.Second:
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	case d < 10*time.Second:
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	}
+	return d.Round(time.Second).String()
+}
+
+func formatWarning(task, warning string) string {
+	return Warning("warning:") + " " + task + ": " + warning
+}
+
 // labelOf returns name's display label, or name when it has none.
 func labelOf(labels map[string]string, name string) string {
 	if l := labels[name]; l != "" {

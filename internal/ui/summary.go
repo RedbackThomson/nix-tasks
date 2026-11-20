@@ -12,8 +12,8 @@ import (
 
 // writeSummary prints the end-of-run summary shared by every reporter: the
 // dependency tree of each target with every task's result, the output of each
-// failed task (when output returns it, i.e. it was not already shown), and the
-// totals line.
+// failed task (when output returns it, i.e. it was not already shown), task
+// warnings, and the totals line.
 func writeSummary(w io.Writer, graph *runner.TaskGraph, targets []string, results []runner.TaskResult, output func(name string) ([]byte, bool)) {
 	var b strings.Builder
 	b.WriteString("\n")
@@ -31,6 +31,17 @@ func writeSummary(w io.Writer, graph *runner.TaskGraph, targets []string, result
 		}
 		fmt.Fprintf(&b, "\n%s %s\n", StateIcon(r.State), r.Name+" output:")
 		writeFailure(&b, r, out)
+	}
+
+	first := true
+	for _, r := range results {
+		for _, warning := range r.Warnings {
+			if first {
+				b.WriteString("\n")
+				first = false
+			}
+			b.WriteString(formatWarning(r.Name, warning) + "\n")
+		}
 	}
 
 	fmt.Fprintf(&b, "\n%s\n", completedLine(results))

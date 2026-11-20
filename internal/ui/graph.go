@@ -60,7 +60,11 @@ func (t *treeRenderer) label(name string, isAfter, duplicate bool) string {
 	if isAfter {
 		label += " " + Label("(after)")
 	}
-	if task, ok := t.graph.Task(name); ok && task.Description != "" {
+	task, _ := t.graph.Task(name)
+	if task.Cache != nil {
+		label += " " + Muted("(cache)")
+	}
+	if task.Description != "" {
 		label += " " + Muted(task.Description)
 	}
 	if duplicate {

@@ -6,7 +6,9 @@
 let
   taskFields = [
     "description" "label" "type" "deps" "depends" "after" "commands" "script" "env"
-    "workingDir" "continueOnError" "inputs" "noCache" "derivation"
+    "workingDir" "continueOnError" "cache" "derivation"
+    # Removed fields stay routed to the task so they reach its migration error.
+    "inputs" "noCache"
   ];
 in
 rec {

@@ -37,6 +37,11 @@ func (r *RawReporter) TaskOutput(name string) (io.Writer, io.Writer) {
 }
 
 func (r *RawReporter) TaskFinished(res runner.TaskResult) {
+	r.mu.Lock()
+	for _, w := range res.Warnings {
+		_, _ = io.WriteString(r.stderr, formatWarning(res.Name, w)+"\n")
+	}
+	r.mu.Unlock()
 	if res.Name == r.target || !failed(res) {
 		r.outputs.drop(res.Name)
 	}

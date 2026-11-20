@@ -12,19 +12,20 @@ import (
 
 func TestDescribeTask(t *testing.T) {
 	ui.SetColor(false)
-	graph, err := runner.NewTaskGraph(map[string]config.Task{
+	cfg := &config.Config{Tasks: map[string]config.Task{
 		"gen":    {},
 		"build":  {Description: "Build it", Depends: []string{"gen"}, Commands: []string{"go build ./..."}},
 		"test":   {Depends: []string{"build"}},
 		"lint":   {Depends: []string{"build"}},
 		"notify": {After: []string{"build"}},
-	})
+	}}
+	graph, err := runner.NewTaskGraph(cfg.Tasks)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	var buf bytes.Buffer
-	describeTask(&buf, graph, "build")
+	describeTask(&buf, cfg, graph, "build")
 
 	want := `Task: build
 
@@ -41,6 +42,8 @@ Depended on by:
 After-hooked by:
   - notify
 
+Cache: disabled
+
 Commands:
   go build ./...
 `
@@ -52,11 +55,12 @@ Commands:
 func TestDescribeTask_Label(t *testing.T) {
 	ui.SetColor(false)
 	const long = "test-unit-crossplane-provider-aws-ec2-managed-resources"
-	graph, err := runner.NewTaskGraph(map[string]config.Task{
+	cfg := &config.Config{Tasks: map[string]config.Task{
 		"lint":  {},
 		"build": {Label: "b"},
 		long:    {},
-	})
+	}}
+	graph, err := runner.NewTaskGraph(cfg.Tasks)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +70,7 @@ func TestDescribeTask_Label(t *testing.T) {
 		long:    "Label:\n  t-u-c-p-a-e-managed-resources (abbreviated; set `label` to choose one)\n\n",
 	} {
 		var buf bytes.Buffer
-		describeTask(&buf, graph, name)
+		describeTask(&buf, cfg, graph, name)
 		got := buf.String()
 		if want == "" {
 			if strings.Contains(got, "Label:") {

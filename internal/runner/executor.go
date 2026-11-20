@@ -26,6 +26,7 @@ type Nix interface {
 	ShellDrvPaths(ctx context.Context, system string, tasks []string) (map[string]string, error)
 	PrintDevEnvCmd(ctx context.Context, drvPath, profile string) *exec.Cmd
 	BuildCmd(ctx context.Context, attr string) *exec.Cmd
+	BuildDrvPaths(ctx context.Context, system string, tasks []string) (map[string]string, error)
 }
 
 // Options configures task execution
@@ -37,9 +38,12 @@ type Options struct {
 	// instead of cancelling the rest of the run.
 	ContinueOnError bool
 
-	Force      bool   // Bypass cache (re-run even if cached)
-	NoCache    bool   // Don't read or write cache
-	ProjectKey string // Cache key for project
+	// Cache stores the results of tasks that declare a cache; nil disables
+	// the cache entirely, so nothing is hashed, looked up or stored.
+	Cache *cache.Store
+	// Force runs cached tasks without looking them up, refreshing their
+	// entries on success.
+	Force bool
 
 	// Reporter receives task events and output; nil discards them.
 	Reporter Reporter
@@ -64,9 +68,12 @@ type Executor struct {
 	nix      Nix
 	config   *config.Config
 	options  Options
-	cache    *cache.Store
 	reporter Reporter
 	devEnvs  *devEnvs
+	// buildDrvs holds the drvPath of each build task upstream of a cached
+	// task in the run; buildDrvsErr is why they could not be evaluated.
+	buildDrvs    map[string]string
+	buildDrvsErr error
 }
 
 // NewExecutor creates a task executor
@@ -77,9 +84,8 @@ func NewExecutor(n Nix, cfg *config.Config, opts Options) *Executor {
 	if opts.DevEnvDir == "" {
 		opts.DevEnvDir = filepath.Join(cache.Dir(), "devenv")
 	}
-	var store *cache.Store
-	if !opts.NoCache && opts.ProjectKey != "" {
-		store = cache.NewStore(opts.ProjectKey)
+	if cfg == nil {
+		cfg = &config.Config{}
 	}
 	if opts.Warn == nil {
 		opts.Warn = func(string) {}
@@ -92,7 +98,6 @@ func NewExecutor(n Nix, cfg *config.Config, opts Options) *Executor {
 		nix:      n,
 		config:   cfg,
 		options:  opts,
-		cache:    store,
 		reporter: reporter,
 	}
 }
