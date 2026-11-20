@@ -8,6 +8,7 @@ import (
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/nix"
 	"github.com/redbackthomson/nix-tasks/internal/tui"
+	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
 // TUICmd launches the interactive TUI
@@ -16,7 +17,7 @@ type TUICmd struct{}
 // Run executes the TUI command
 func (c *TUICmd) Run(globals *Globals) error {
 	// Check if we're in a TTY
-	if !isTerminal() {
+	if !ui.IsTerminal(os.Stdout) {
 		return fmt.Errorf("TUI requires an interactive terminal")
 	}
 
@@ -31,13 +32,4 @@ func (c *TUICmd) Run(globals *Globals) error {
 	}
 
 	return tui.Run(cfg, globals.Flake)
-}
-
-// isTerminal checks if stdout is a terminal
-func isTerminal() bool {
-	fileInfo, err := os.Stdout.Stat()
-	if err != nil {
-		return false
-	}
-	return (fileInfo.Mode() & os.ModeCharDevice) != 0
 }

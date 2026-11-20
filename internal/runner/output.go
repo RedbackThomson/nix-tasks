@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"sync"
+
+	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
 // OutputMode determines how task output is displayed
@@ -25,19 +27,10 @@ func DetectOutputMode() OutputMode {
 	if os.Getenv("CI") != "" {
 		return Streaming
 	}
-	if isTerminal(os.Stdout) {
+	if ui.IsTerminal(os.Stdout) {
 		return Progress
 	}
 	return Buffered
-}
-
-// isTerminal returns true if the file is a terminal device
-func isTerminal(f *os.File) bool {
-	fi, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 
 // prefixWriter adds a prefix to each line

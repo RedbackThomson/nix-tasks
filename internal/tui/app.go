@@ -10,37 +10,19 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
+	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
 
 // Styles for the TUI
 var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("15"))
-
-	sectionStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("12"))
-
-	sectionInactiveStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("8"))
-
-	selectedStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("10")).
-			Bold(true)
-
-	normalStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("7"))
-
-	descStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8"))
-
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("8"))
-
-	cursorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("10")).
-			Bold(true)
+	titleStyle           = lipgloss.NewStyle().Bold(true)
+	sectionStyle         = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.ANSIColor(ui.AccentColor))
+	sectionInactiveStyle = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(ui.MutedColor))
+	selectedStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.ANSIColor(ui.AccentColor))
+	normalStyle          = lipgloss.NewStyle()
+	descStyle            = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(ui.MutedColor))
+	helpStyle            = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(ui.MutedColor))
+	cursorStyle          = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.ANSIColor(ui.AccentColor))
 )
 
 // Mode represents the current section being viewed

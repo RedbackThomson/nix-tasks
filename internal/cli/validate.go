@@ -30,7 +30,7 @@ func (c *ValidateCmd) Run(globals *Globals) error {
 		return err
 	}
 
-	fmt.Printf("%s Configuration is valid\n", ui.Green("✓"))
+	fmt.Printf("%s Configuration is valid\n", ui.Success("✓"))
 	fmt.Printf("  Tasks: %d\n", len(cfg.Tasks))
 	fmt.Printf("  Packages: %d\n", len(cfg.Packages))
 	fmt.Printf("  Dev Shells: %d\n", len(cfg.DevShells))

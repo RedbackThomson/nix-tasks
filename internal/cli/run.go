@@ -173,10 +173,10 @@ func printSummary(results []runner.TaskResult) {
 		parts = append(parts, fmt.Sprintf("%d passed", n))
 	}
 	if n := counts[runner.Failed]; n > 0 {
-		parts = append(parts, ui.Red(fmt.Sprintf("%d failed", n)))
+		parts = append(parts, ui.Failure(fmt.Sprintf("%d failed", n)))
 	}
 	if n := counts[runner.FailedAllowed]; n > 0 {
-		parts = append(parts, ui.Yellow(fmt.Sprintf("%d failed (allowed)", n)))
+		parts = append(parts, ui.Warning(fmt.Sprintf("%d failed (allowed)", n)))
 	}
 	if n := counts[runner.Skipped]; n > 0 {
 		parts = append(parts, fmt.Sprintf("%d skipped", n))
@@ -193,15 +193,15 @@ func printSummary(results []runner.TaskResult) {
 func stateIcon(state runner.TaskState) string {
 	switch state {
 	case runner.Failed:
-		return ui.Red("✗")
+		return ui.Failure("✗")
 	case runner.FailedAllowed:
-		return ui.Yellow("!")
+		return ui.Warning("!")
 	case runner.Skipped:
-		return ui.Gray("-")
+		return ui.Muted("-")
 	case runner.Interrupted:
-		return ui.Yellow("⏹")
+		return ui.Warning("⏹")
 	}
-	return ui.Green("✓")
+	return ui.Success("✓")
 }
 
 // showsOutput reports whether a task's captured output is printed after the
@@ -218,7 +218,7 @@ func printFailedOutput(r runner.TaskResult) {
 		fmt.Printf("    %s\n", line)
 	}
 	if tmpFile != "" {
-		fmt.Printf("    %s\n", ui.Gray("full output: "+tmpFile))
+		fmt.Printf("    %s\n", ui.Muted("full output: "+tmpFile))
 	}
 }
 
@@ -237,7 +237,7 @@ func tailAndSave(taskName, output string) (tail string, tmpFile string) {
 
 	if len(lines) > failedOutputTailLines {
 		omitted := len(lines) - failedOutputTailLines
-		lines = append([]string{ui.Gray(fmt.Sprintf("... %d lines omitted ...", omitted))}, lines[len(lines)-failedOutputTailLines:]...)
+		lines = append([]string{ui.Muted(fmt.Sprintf("... %d lines omitted ...", omitted))}, lines[len(lines)-failedOutputTailLines:]...)
 	}
 	return strings.Join(lines, "\n"), tmpFile
 }

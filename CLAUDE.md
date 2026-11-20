@@ -414,6 +414,7 @@ func (c *counter) add(name string) {
 // Globals contains flags available to all commands
 type Globals struct {
 	Verbose bool   `short:"v" help:"Show task output"`
+	Color   string `enum:"auto,always,never" default:"auto" help:"Colour output: auto, always or never. auto colours a terminal unless NO_COLOR is set"`
 	Debug   bool   `help:"Show debug information including Nix commands"`
 	Flake   string `short:"f" help:"Path to flake" default:"."`
 
@@ -454,16 +455,23 @@ func (c *RunCmd) Run(globals *Globals) error {
 
 ### Output Formatting
 
-**Colors (no icons):** `internal/ui/colors.go` wraps strings in ANSI colours
-with `Green`, `Red`, `Yellow`, `Blue` and `Gray`:
+**Colors (no icons):** `internal/ui/colors.go` names colours by role:
+`Success`, `Failure` and `Warning` (green, red and yellow) mark results and
+nothing else, while `Accent`, `Label` and `Muted` decorate. Each role is one of
+the 16 standard terminal colours, so the terminal's theme applies, and the
+TUI's lipgloss styles use the same roles. Whether colour is on is
+decided once at startup (`ui.ResolveColor` from `--color`, `NO_COLOR` and
+whether stdout is a terminal, then `ui.SetColor`), so callers never check
+the terminal themselves:
 
 ```go
-fmt.Printf("%s %s\n", ui.Green("✓"), taskName)  // Success
-fmt.Printf("%s %s\n", ui.Red("✗"), taskName)    // Failure
+fmt.Printf("%s %s\n", ui.Success("✓"), taskName)
+fmt.Printf("%s %s\n", ui.Failure("✗"), taskName)
 ```
 
-**Terminal vs CI:** `runner.DetectOutputMode` streams prefixed output when `CI`
-is set, shows the live progress display when stdout is a terminal, and
+**Terminal vs CI:** use `ui.IsTerminal` for terminal checks.
+`runner.DetectOutputMode` streams prefixed output when `CI` is set, shows the
+live progress display when stdout is a terminal, and
 otherwise buffers each task's output and prints it only on failure.
 
 ## Nix Integration Patterns

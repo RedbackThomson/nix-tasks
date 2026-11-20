@@ -35,35 +35,35 @@ func (c *DescribeCmd) Run(globals *Globals) error {
 	}
 
 	// Print detailed task information
-	fmt.Printf("%s %s\n", ui.Blue("Task:"), c.Task)
+	fmt.Printf("%s %s\n", ui.Label("Task:"), c.Task)
 	fmt.Println()
 
 	if task.Description != "" {
-		fmt.Printf("%s\n  %s\n\n", ui.Blue("Description:"), task.Description)
+		fmt.Printf("%s\n  %s\n\n", ui.Label("Description:"), task.Description)
 	}
 
 	if len(task.Deps) > 0 {
-		fmt.Printf("%s\n", ui.Blue("Packages:"))
+		fmt.Printf("%s\n", ui.Label("Packages:"))
 		for _, dep := range task.Deps {
-			fmt.Printf("  %s %s\n", ui.Gray("-"), dep)
+			fmt.Printf("  %s %s\n", ui.Muted("-"), dep)
 		}
 		fmt.Println()
 	}
 
 	if len(task.Depends) > 0 {
-		fmt.Printf("%s\n", ui.Blue("Depends on:"))
+		fmt.Printf("%s\n", ui.Label("Depends on:"))
 		for _, dep := range task.Depends {
 			depName := strings.TrimPrefix(dep, "task:")
-			fmt.Printf("  %s %s\n", ui.Gray("-"), depName)
+			fmt.Printf("  %s %s\n", ui.Muted("-"), depName)
 		}
 		fmt.Println()
 	}
 
 	if len(task.After) > 0 {
-		fmt.Printf("%s\n", ui.Blue("Runs after:"))
+		fmt.Printf("%s\n", ui.Label("Runs after:"))
 		for _, dep := range task.After {
 			depName := strings.TrimPrefix(dep, "task:")
-			fmt.Printf("  %s %s\n", ui.Gray("-"), depName)
+			fmt.Printf("  %s %s\n", ui.Muted("-"), depName)
 		}
 		fmt.Println()
 	}
@@ -71,9 +71,9 @@ func (c *DescribeCmd) Run(globals *Globals) error {
 	// Find tasks that depend on this one
 	dependents := findDependents(c.Task, cfg.Tasks)
 	if len(dependents) > 0 {
-		fmt.Printf("%s\n", ui.Blue("Depended on by:"))
+		fmt.Printf("%s\n", ui.Label("Depended on by:"))
 		for _, dep := range dependents {
-			fmt.Printf("  %s %s\n", ui.Gray("-"), dep)
+			fmt.Printf("  %s %s\n", ui.Muted("-"), dep)
 		}
 		fmt.Println()
 	}
@@ -81,37 +81,37 @@ func (c *DescribeCmd) Run(globals *Globals) error {
 	// Find tasks that hook onto this one via "after"
 	afterHookers := findAfterHookers(c.Task, cfg.Tasks)
 	if len(afterHookers) > 0 {
-		fmt.Printf("%s\n", ui.Blue("After-hooked by:"))
+		fmt.Printf("%s\n", ui.Label("After-hooked by:"))
 		for _, dep := range afterHookers {
-			fmt.Printf("  %s %s\n", ui.Gray("-"), dep)
+			fmt.Printf("  %s %s\n", ui.Muted("-"), dep)
 		}
 		fmt.Println()
 	}
 
 	if len(task.Inputs) > 0 {
-		fmt.Printf("%s\n", ui.Blue("Inputs:"))
+		fmt.Printf("%s\n", ui.Label("Inputs:"))
 		for _, input := range task.Inputs {
-			fmt.Printf("  %s %s\n", ui.Gray("-"), input)
+			fmt.Printf("  %s %s\n", ui.Muted("-"), input)
 		}
 		fmt.Println()
 	}
 
 	if task.Type == config.TaskTypeBuild {
-		fmt.Printf("%s\n  %s\n", ui.Blue("Builds:"), nix.NixTasksBuildsAttr(nix.CurrentSystem(), c.Task))
-		fmt.Printf("%s\n  %s\n\n", ui.Blue("Outputs linked to:"), filepath.Join(".nix-tasks", c.Task)+string(filepath.Separator))
+		fmt.Printf("%s\n  %s\n", ui.Label("Builds:"), nix.NixTasksBuildsAttr(nix.CurrentSystem(), c.Task))
+		fmt.Printf("%s\n  %s\n\n", ui.Label("Outputs linked to:"), filepath.Join(".nix-tasks", c.Task)+string(filepath.Separator))
 	}
 
 	// Show commands if verbose
 	if len(task.Commands) > 0 {
-		fmt.Printf("%s\n", ui.Blue("Commands:"))
+		fmt.Printf("%s\n", ui.Label("Commands:"))
 		for _, cmd := range task.Commands {
-			fmt.Printf("  %s\n", ui.Gray(cmd))
+			fmt.Printf("  %s\n", ui.Muted(cmd))
 		}
 	} else if task.Script != "" {
-		fmt.Printf("%s\n", ui.Blue("Script:"))
+		fmt.Printf("%s\n", ui.Label("Script:"))
 		lines := strings.Split(task.Script, "\n")
 		for _, line := range lines {
-			fmt.Printf("  %s\n", ui.Gray(line))
+			fmt.Printf("  %s\n", ui.Muted(line))
 		}
 	}
 
