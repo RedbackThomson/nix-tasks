@@ -143,7 +143,7 @@ func (e *Executor) runShellTask(ctx context.Context, name string, task config.Ta
 	// Run inside nix develop with the task's shell
 	system := nix.CurrentSystem()
 	shellAttr := nix.NixTasksShellsAttr(system, name)
-	cmd := e.nix.DevelopCmd(ctx, shellAttr, []string{"bash", "-e", "-c", script})
+	cmd := e.nix.DevelopCmd(ctx, shellAttr, []string{"bash", "-e", "-o", "pipefail", "-c", script})
 
 	isolateProcessGroup(cmd)
 	cmd.Stdout, cmd.Stderr = e.taskOutput(name)

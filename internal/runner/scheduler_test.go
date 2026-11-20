@@ -389,3 +389,26 @@ func TestRun_CancelledBeforeStartSkipsEverything(t *testing.T) {
 	results := h.run(ctx, map[string]config.Task{"a": logged("a"), "b": logged("b", "a")}, "b")
 	assertStates(t, results, map[string]runner.TaskState{"a": runner.Skipped, "b": runner.Skipped})
 }
+
+func TestRun_ShellOptions(t *testing.T) {
+	tests := []struct {
+		name   string
+		script string
+		want   runner.TaskState
+	}{
+		{"failing command stops the script", "false\necho unreachable >> ran.log", runner.Failed},
+		{"failure inside a pipeline fails the task", "false | cat", runner.Failed},
+		{"pipefail can be turned off", "set +o pipefail\nfalse | cat", runner.Succeeded},
+		{"a failure can be tolerated with || true", "false || true", runner.Succeeded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarness(t)
+			results := h.run(context.Background(), map[string]config.Task{"t": sh(tt.script)}, "t")
+			assertStates(t, results, map[string]runner.TaskState{"t": tt.want})
+			if ran := h.ran(); len(ran) != 0 {
+				t.Errorf("script continued after a failure: %v", ran)
+			}
+		})
+	}
+}

@@ -446,6 +446,12 @@ tasks.build = lib.mkTask {
 };
 ```
 
+A task's `commands` (joined by newlines) or `script` run with
+`bash -e -o pipefail`: the task fails as soon as any command fails, including
+any command in a pipeline, so `go test ./... | tee test.log` fails when the
+tests do. To tolerate a failing command, append `|| true` to it, or put
+`set +o pipefail` at the top of the script to turn pipeline checking off.
+
 #### Task with environment variables
 
 ```nix
