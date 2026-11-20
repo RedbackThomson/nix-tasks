@@ -33,13 +33,15 @@ type RunCmd struct {
 
 // Run executes the run command
 func (c *RunCmd) Run(globals *Globals) error {
-	// Set up context with signal handling
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Handle interrupt signals
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	// Catch signals before loading config so an early Ctrl-C still exits 130.
+	// After the first signal the default handlers are restored, so a second
+	// Ctrl-C kills nix-tasks without waiting for tasks to shut down.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 
 	// Initialize Nix evaluator
 	eval := nix.NewEvaluator(globals.Flake)
@@ -49,6 +51,9 @@ func (c *RunCmd) Run(globals *Globals) error {
 	slog.Debug("loading config", "flake", globals.Flake)
 	configStart := time.Now()
 	cfg, err := config.Load(ctx, eval)
+	if ctx.Err() != nil {
+		return errInterrupted
+	}
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
@@ -79,15 +84,6 @@ func (c *RunCmd) Run(globals *Globals) error {
 			TailLines: 5,
 		})
 	}
-
-	// Modified signal handler: clean up progress display before cancelling
-	go func() {
-		<-sigCh
-		if progress != nil {
-			progress.Stop()
-		}
-		cancel()
-	}()
 
 	// Compute project key for caching
 	projectKey := ""
@@ -154,14 +150,14 @@ func (c *RunCmd) Run(globals *Globals) error {
 		}
 	}
 
-	switch code := runExitCode(results); code {
-	case 0:
-		return nil
-	case exitInterrupted:
-		return &ExitCodeError{Code: code, Err: errors.New("interrupted")}
-	default:
+	code := runExitCode(results)
+	switch {
+	case code == exitInterrupted || (code == 0 && ctx.Err() != nil):
+		return errInterrupted
+	case code != 0:
 		return &ExitCodeError{Code: code, Err: errors.New("one or more tasks failed")}
 	}
+	return nil
 }
 
 // printSummary prints the "Completed: N tasks (...)" summary line

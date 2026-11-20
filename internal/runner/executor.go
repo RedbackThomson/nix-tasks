@@ -145,7 +145,7 @@ func (e *Executor) runShellTask(ctx context.Context, name string, task config.Ta
 	shellAttr := nix.NixTasksShellsAttr(system, name)
 	cmd := e.nix.DevelopCmd(ctx, shellAttr, []string{"bash", "-e", "-c", script})
 
-	// Configure output
+	isolateProcessGroup(cmd)
 	cmd.Stdout, cmd.Stderr = e.taskOutput(name)
 
 	cmd.Dir = e.taskDir(task)
@@ -172,6 +172,7 @@ func (e *Executor) runShellTask(ctx context.Context, name string, task config.Ta
 func (e *Executor) runBuildTask(ctx context.Context, name string) error {
 	attr := nix.NixTasksBuildsAttr(nix.CurrentSystem(), name)
 	cmd := e.nix.BuildCmd(ctx, attr)
+	isolateProcessGroup(cmd)
 
 	var stdout, stderr bytes.Buffer
 	_, taskStderr := e.taskOutput(name)

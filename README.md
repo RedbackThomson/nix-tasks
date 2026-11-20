@@ -354,7 +354,11 @@ Every task in the run ends in one of these states:
 
 If exactly one task fails because its command exited non-zero, `nix-tasks run`
 exits with that command's exit code (also with `--raw`); any other failure
-exits 1. A run stopped by Ctrl-C or SIGTERM exits 130.
+exits 1.
+
+Ctrl-C (or SIGTERM) stops the run: each running task's whole process tree is
+sent SIGTERM, anything still alive 5 seconds later is killed, and `nix-tasks
+run` exits 130. Press Ctrl-C again to quit immediately without waiting.
 
 ### Development Shells
 
