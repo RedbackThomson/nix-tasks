@@ -158,32 +158,4 @@ rec {
           overlay;
     in
     mergeAttrs base overlayResolved;
-
-  # Create a composable configuration module
-  #
-  # This is useful for creating reusable configuration fragments that can be
-  # combined together.
-  #
-  # Arguments:
-  #   config - The configuration fragment
-  #
-  # Returns a module that can be used with composeConfigs
-  mkModule = config: {
-    __isModule = true;
-    config = config;
-  };
-
-  # Compose multiple configuration modules together
-  #
-  # Arguments:
-  #   modules - List of modules created with mkModule
-  #
-  # Returns the composed configuration
-  composeConfigs = modules:
-    builtins.foldl' (acc: mod:
-      let
-        cfg = if mod ? __isModule then mod.config else mod;
-      in
-      extend acc cfg
-    ) {} modules;
 }

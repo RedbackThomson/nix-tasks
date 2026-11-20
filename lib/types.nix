@@ -1,41 +1,7 @@
 { lib }:
 {
-  # Task type definition
-  taskType = {
-    type ? "shell",  # "shell" or "build"
-    description ? "",
-    deps ? [],
-    depends ? [],
-    after ? [],
-    # Shell task fields
-    commands ? [],
-    script ? null,
-    env ? {},
-    workingDir ? null,
-    inputs ? [],
-    outputs ? {},
-    continueOnError ? false,
-    # Build task fields
-    derivation ? null,
-  }: {
-    inherit type description deps depends after commands script env workingDir inputs outputs continueOnError;
-    inherit derivation;
-  };
-
-  # Shell type definition
-  shellType = {
-    extends ? null,
-    packages ? [],
-    env ? {},
-    shellHook ? "",
-  }: {
-    inherit extends packages env shellHook;
-  };
-
-  # Validate configuration
   validateConfig = config:
     let
-      # Ensure required fields exist
       packages = config.packages or {};
       tasks = config.tasks or {};
       devShells = config.devShells or {};
