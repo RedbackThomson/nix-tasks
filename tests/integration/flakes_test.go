@@ -3,16 +3,14 @@
 package integration_test
 
 import (
-	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 )
 
 // writeTempFlake creates a flake outside the repository so tests can add
@@ -70,26 +68,16 @@ func writeTempFlake(t *testing.T, tasksConfig string, files map[string]string) s
 func runNixTasksIn(t *testing.T, binary, dir string, args ...string) (string, string, int) {
 	t.Helper()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	cmd := exec.CommandContext(ctx, binary, args...)
-	cmd.Dir = dir
-	cmd.Env = append(cmd.Environ(), "NIX_TASKS_CACHE_DIR="+t.TempDir())
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
+	stdout, stderr, err := runNixTasksInDir(t, binary, dir, t.TempDir(), args...)
 	code := 0
 	if err != nil {
 		code = -1
-		if exitErr, ok := err.(*exec.ExitError); ok {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
 			code = exitErr.ExitCode()
 		}
 	}
-	return stdout.String(), stderr.String(), code
+	return stdout, stderr, code
 }
 
 func randomString(t *testing.T) string {
