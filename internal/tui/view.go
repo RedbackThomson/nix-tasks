@@ -21,6 +21,7 @@ var (
 	successStyle  = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(ui.SuccessColor))
 	failStyle     = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(ui.FailureColor))
 	warnStyle     = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(ui.WarningColor))
+	markStyle     = lipgloss.NewStyle().Foreground(lipgloss.ANSIColor(ui.AccentColor))
 )
 
 // Sizes used before the terminal reports its own.
@@ -171,7 +172,19 @@ func (m Model) mainLines() []string {
 		lines = append(lines, list...)
 	}
 
-	return append(lines, m.status, dimStyle.Render(m.keyHints()))
+	return append(lines, m.statusLine(), dimStyle.Render(m.keyHints()))
+}
+
+func (m Model) statusLine() string {
+	n := len(m.marked)
+	if n == 0 {
+		return m.status
+	}
+	marks := markStyle.Render(fmt.Sprintf("● %d marked", n))
+	if m.status == "" {
+		return marks
+	}
+	return marks + dimStyle.Render(" · ") + m.status
 }
 
 func (m Model) filterLine() string {
@@ -265,7 +278,15 @@ func (m Model) itemLine(name string, selected bool) string {
 	if selected {
 		cursor, label = selectedStyle.Render("> "), selectedStyle.Render(name)
 	}
-	line := cursor + label
+	line := cursor
+	if m.mode == TaskMode {
+		mark := "  "
+		if m.marked[name] {
+			mark = markStyle.Render("● ")
+		}
+		line += mark
+	}
+	line += label
 	if desc := m.summary(name); desc != "" {
 		line += "  " + dimStyle.Render(desc)
 	}
@@ -295,7 +316,10 @@ func (m Model) keyHints() string {
 	if m.mode == ShellMode {
 		return "enter enter shell · / filter · tab tasks · ? help · q quit"
 	}
-	return "enter run · / filter · g graph · tab shells · ? help · q quit"
+	if len(m.marked) > 0 {
+		return "enter run marked · space mark · esc unmark all · ? help · q quit"
+	}
+	return "enter run · space mark · / filter · g graph · tab shells · ? help · q quit"
 }
 
 var keyHelp = [][2]string{
@@ -303,8 +327,10 @@ var keyHelp = [][2]string{
 	{"pgup pgdown", "move a page (also ctrl+b, ctrl+f)"},
 	{"home end", "first or last item"},
 	{"tab", "switch between tasks and dev shells"},
-	{"enter, r", "run the task (or enter the dev shell)"},
+	{"enter, r", "run the task, or every marked task in one run (or enter the dev shell)"},
+	{"space", "mark or unmark the task"},
 	{"/", "filter by name or description; enter keeps it, esc clears it"},
+	{"esc", "clear the filter, or else unmark every task"},
 	{"g", "show the task's dependency graph (esc to return)"},
 	{"?", "show or hide this help"},
 	{"q, ctrl+c", "quit"},
