@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "targets": [
+    "deploy"
+  ],
+  "flake": "/repo",
+  "system": "aarch64-darwin",
+  "startedAt": "2026-11-20T09:15:00.000Z",
+  "finishedAt": "2026-11-20T09:15:07.000Z",
+  "durationMs": 7000,
+  "exitCode": 2,
+  "error": null,
+  "counts": {
+    "passed": 3,
+    "failed": 1,
+    "allowedFailures": 1,
+    "cached": 1,
+    "skipped": 1,
+    "interrupted": 0
+  },
+  "warnings": [
+    "task logs are not kept: example"
+  ],
+  "tasks": [
+    {
+      "name": "gen",
+      "label": "gen",
+      "state": "succeeded",
+      "cached": true,
+      "afterHook": false,
+      "exitCode": null,
+      "error": null,
+      "skipReason": null,
+      "startedAt": "2026-11-20T09:15:02.100Z",
+      "finishedAt": "2026-11-20T09:15:02.101Z",
+      "durationMs": 1,
+      "log": null
+    },
+    {
+      "name": "build",
+      "label": "build",
+      "state": "succeeded",
+      "cached": false,
+      "afterHook": false,
+      "exitCode": 0,
+      "error": null,
+      "skipReason": null,
+      "startedAt": "2026-11-20T09:15:02.101Z",
+      "finishedAt": "2026-11-20T09:15:04.401Z",
+      "durationMs": 2300,
+      "log": "/runs/r/build.log"
+    },
+    {
+      "name": "lint",
+      "label": "lint",
+      "state": "failed_allowed",
+      "cached": false,
+      "afterHook": false,
+      "exitCode": 1,
+      "error": "task 'lint' failed: exit status 1",
+      "skipReason": null,
+      "startedAt": "2026-11-20T09:15:02.100Z",
+      "finishedAt": "2026-11-20T09:15:02.500Z",
+      "durationMs": 400,
+      "log": "/runs/r/lint.log"
+    },
+    {
+      "name": "setup",
+      "label": "setup",
+      "state": "succeeded",
+      "cached": false,
+      "afterHook": false,
+      "exitCode": 0,
+      "error": null,
+      "skipReason": null,
+      "startedAt": "2026-11-20T09:15:04.401Z",
+      "finishedAt": "2026-11-20T09:15:04.411Z",
+      "durationMs": 10,
+      "log": "/runs/r/setup.log"
+    },
+    {
+      "name": "notify",
+      "label": "ntfy",
+      "state": "succeeded",
+      "cached": false,
+      "afterHook": true,
+      "exitCode": 0,
+      "error": null,
+      "skipReason": null,
+      "startedAt": "2026-11-20T09:15:04.411Z",
+      "finishedAt": "2026-11-20T09:15:04.461Z",
+      "durationMs": 50,
+      "log": "/runs/r/notify.log"
+    },
+    {
+      "name": "test",
+      "label": "test",
+      "state": "failed",
+      "cached": false,
+      "afterHook": false,
+      "exitCode": 2,
+      "error": "task 'test' failed: exit status 2",
+      "skipReason": null,
+      "startedAt": "2026-11-20T09:15:04.401Z",
+      "finishedAt": "2026-11-20T09:15:08.501Z",
+      "durationMs": 4100,
+      "log": "/runs/r/test.log"
+    },
+    {
+      "name": "deploy",
+      "label": "deploy",
+      "state": "skipped",
+      "cached": false,
+      "afterHook": false,
+      "exitCode": null,
+      "error": null,
+      "skipReason": "test failed",
+      "startedAt": null,
+      "finishedAt": null,
+      "durationMs": null,
+      "log": null
+    }
+  ]
+}

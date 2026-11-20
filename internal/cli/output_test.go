@@ -30,6 +30,7 @@ func TestResolveOutput(t *testing.T) {
 		{name: "-v wins over GitHub Actions", output: "auto", verbose: true, env: map[string]string{"GITHUB_ACTIONS": "true"}, want: OutputStream},
 		{name: "explicit mode wins over GitHub Actions", output: "plain", env: map[string]string{"GITHUB_ACTIONS": "true"}, want: OutputPlain},
 		{name: "github anywhere", output: "github", terminal: true, want: OutputGitHub},
+		{name: "json only when asked", output: "json", verbose: true, env: map[string]string{"GITHUB_ACTIONS": "true"}, terminal: true, want: OutputJSON},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -56,6 +56,9 @@ type TaskResult struct {
 	// Start is when the task began; zero for skipped tasks.
 	Start    time.Time
 	Duration time.Duration
+	// Log is the file holding the task's combined output, or "" when the
+	// task did not run (cached or skipped) or the run keeps no logs.
+	Log string
 }
 
 // ExitCode returns the exit status of the task's process, or -1 when the
@@ -213,7 +216,7 @@ func skip(name, reason string) TaskResult {
 // runOne runs a single task and classifies its outcome
 func (e *Executor) runOne(ctx context.Context, name string, task config.Task) TaskResult {
 	start := time.Now()
-	cached, err := e.runTask(ctx, name, task)
+	cached, log, err := e.runTask(ctx, name, task)
 	duration := time.Since(start)
 
 	state := Succeeded
@@ -234,12 +237,13 @@ func (e *Executor) runOne(ctx context.Context, name string, task config.Task) Ta
 		Error:    err,
 		Start:    start,
 		Duration: duration,
+		Log:      log,
 	}
 }
 
 // runTask executes a single task, answering from the cache when it can. Only
 // successful runs are cached, so a failure is always retried.
-func (e *Executor) runTask(ctx context.Context, name string, task config.Task) (cached bool, err error) {
+func (e *Executor) runTask(ctx context.Context, name string, task config.Task) (cached bool, log string, err error) {
 	var fp *cache.Fingerprint
 	if e.cache != nil {
 		var fpErr error
@@ -254,12 +258,13 @@ func (e *Executor) runTask(ctx context.Context, name string, task config.Task) (
 
 	if fp != nil && !e.options.Force {
 		if entry, ok := e.cache.Lookup(name, fp); ok && entry.Success {
-			return true, nil
+			return true, "", nil
 		}
 	}
 
-	if err := e.execTask(ctx, name, task); err != nil {
-		return false, &TaskExecutionError{Name: name, Err: err}
+	log, err = e.execTask(ctx, name, task)
+	if err != nil {
+		return false, log, &TaskExecutionError{Name: name, Err: err}
 	}
 
 	if fp != nil {
@@ -267,7 +272,7 @@ func (e *Executor) runTask(ctx context.Context, name string, task config.Task) (
 			slog.Debug("failed to store cache entry", "task", name, "error", storeErr)
 		}
 	}
-	return false, nil
+	return false, log, nil
 }
 
 // TaskExecutionError indicates a task failed during execution

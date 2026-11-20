@@ -271,8 +271,9 @@ internal/
     config/               # Types (config.go), loading (loader.go), validation (validate.go)
     nix/                  # nix CLI wrapper (evaluator.go) and its errors (errors.go)
     runner/               # Dependency graph (graph.go) and task execution
+    runlog/               # Per-run task log directories for --output=json, and their pruning
     cache/                # Fingerprints (fingerprint.go) and the on-disk store (store.go)
-    ui/                   # Colours, run Reporters (progress, line, raw, github) and status printing
+    ui/                   # Colours, run Reporters (progress, line, raw, github, json) and status printing
     tui/                  # Bubbletea app (app.go)
 lib/                      # Nix library: module options (module.nix), outputs (eval.nix), builders, Make compat, tests
 ```
@@ -482,6 +483,12 @@ environment: the `GitHubReporter` for `github` (`GITHUB_ACTIONS=true`; see
 (`-v`, or `CI` set), the
 `ProgressReporter` for `tty` (a terminal), and for `plain` a `LineReporter`
 that prints start and finish lines and shows output only for failed tasks.
+The `JSONReporter` for `json` (only when asked for) prints nothing until
+`RunCmd.Run` calls its `Write` with the exit code, warnings and any error;
+its schema is documented in `docs/json-output.md` and pinned by
+`internal/ui/testdata/json_run.golden.json`. Since the document holds no
+task output, in json mode the runner also writes each task's output to a log
+in the run's directory (`internal/runlog`, `runner.Options.LogDir`).
 
 ## Nix Integration Patterns
 

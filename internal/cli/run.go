@@ -4,17 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
+	"github.com/redbackthomson/nix-tasks/internal/nix"
+	"github.com/redbackthomson/nix-tasks/internal/runlog"
 	"github.com/redbackthomson/nix-tasks/internal/runner"
 	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
@@ -44,10 +49,38 @@ func (c *RunCmd) Validate() error {
 
 // Run executes the run command
 func (c *RunCmd) Run(globals *Globals) error {
+	if c.Raw && globals.Output == OutputJSON {
+		return errors.New("--output=json cannot be combined with --raw: the JSON document is the only thing on stdout")
+	}
+	warnings := &warnings{out: os.Stderr}
+	reporter := c.newReporter(globals)
+	err := c.run(globals, reporter, warnings)
+	if j, ok := reporter.(*ui.JSONReporter); ok {
+		code, runErr := exitStatus(err)
+		if werr := j.Write(code, warnings.list(), runErr); werr != nil {
+			return errors.Join(err, fmt.Errorf("failed to write the JSON document: %w", werr))
+		}
+	}
+	return err
+}
+
+// exitStatus is the exit code nix-tasks ends with for err, and err itself
+// when it is not just the outcome of the run's tasks.
+func exitStatus(err error) (int, error) {
+	var exitErr *ExitCodeError
+	switch {
+	case err == nil:
+		return 0, nil
+	case errors.As(err, &exitErr):
+		return exitErr.Code, nil
+	}
+	return 1, err
+}
+
+func (c *RunCmd) run(globals *Globals, reporter ui.Reporter, warnings *warnings) error {
 	// Catch signals before loading config so an early Ctrl-C still exits 130.
 	// After the first signal the default handlers are restored, so a second
 	// Ctrl-C kills nix-tasks without waiting for tasks to shut down.
-	reporter := c.newReporter(globals)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	finished := make(chan struct{})
@@ -93,6 +126,12 @@ func (c *RunCmd) Run(globals *Globals) error {
 		projectKey = cache.ProjectKey(globals.Flake)
 	}
 
+	// The JSON document holds no task output, so the logs are where it is.
+	logDir := ""
+	if _, ok := reporter.(*ui.JSONReporter); ok {
+		logDir = startRunLogs(time.Now(), warnings)
+	}
+
 	reporter.Start()
 	defer reporter.Stop()
 	executor := runner.NewExecutor(eval, cfg, runner.Options{
@@ -103,6 +142,8 @@ func (c *RunCmd) Run(globals *Globals) error {
 		ProjectKey:      projectKey,
 		Reporter:        reporter,
 		FlakeRoot:       globals.FlakeRoot,
+		LogDir:          logDir,
+		Warn:            warnings.add,
 	})
 
 	slog.Debug("starting execution", "tasks", c.Tasks)
@@ -128,6 +169,12 @@ func (c *RunCmd) newReporter(globals *Globals) ui.Reporter {
 		return ui.NewRawReporter(c.Tasks[0], os.Stdout, os.Stderr)
 	}
 	switch globals.OutputMode() {
+	case OutputJSON:
+		flake := globals.FlakeRoot
+		if flake == "" {
+			flake = globals.Flake
+		}
+		return ui.NewJSONReporter(ui.JSONOptions{Out: os.Stdout, Targets: c.Tasks, Flake: flake, System: nix.CurrentSystem()})
 	case OutputGitHub:
 		return ui.NewGitHubReporter(ui.GitHubOptions{Out: os.Stdout, SummaryPath: os.Getenv("GITHUB_STEP_SUMMARY")})
 	case OutputStream:
@@ -172,4 +219,41 @@ func resolveJobs(flag *int, env string) (int, error) {
 		return 0, fmt.Errorf("NIX_TASKS_JOBS must be at least 1, got %d", n)
 	}
 	return n, nil
+}
+
+// startRunLogs creates the directory for this run's task logs, or returns ""
+// with a warning when it cannot, in which case tasks run without logs.
+func startRunLogs(now time.Time, w *warnings) string {
+	root, err := runlog.Root()
+	if err != nil {
+		w.add(fmt.Sprintf("task logs are not kept: %v", err))
+		return ""
+	}
+	dir, err := runlog.Start(root, now, runlog.Keep)
+	if err != nil {
+		w.add(err.Error())
+	}
+	return dir
+}
+
+// warnings collects problems that do not fail the run, printing each to
+// out as it happens.
+type warnings struct {
+	out io.Writer
+
+	mu   sync.Mutex
+	msgs []string
+}
+
+func (w *warnings) add(msg string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.msgs = append(w.msgs, msg)
+	_, _ = fmt.Fprintf(w.out, "nix-tasks: warning: %s\n", msg)
+}
+
+func (w *warnings) list() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return slices.Clone(w.msgs)
 }

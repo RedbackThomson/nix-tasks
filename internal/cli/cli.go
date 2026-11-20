@@ -3,7 +3,7 @@ package cli
 // Globals contains flags available to all commands
 type Globals struct {
 	Verbose bool   `short:"v" aliases:"stream" help:"Same as --output=stream"`
-	Output  string `enum:"auto,tty,stream,plain,github" default:"auto" help:"How run shows tasks: tty (live display), stream (every output line, prefixed), plain (start and result lines), github (GitHub Actions log, summary and annotations) or auto: github under GitHub Actions, stream in other CI, tty on a terminal, else plain"`
+	Output  string `enum:"auto,tty,stream,plain,github,json" default:"auto" help:"How run shows tasks: tty (live display), stream (every output line, prefixed), plain (start and result lines), github (GitHub Actions log, summary and annotations), json (one JSON document of the results; task output is in the run's logs) or auto: github under GitHub Actions, stream in other CI, tty on a terminal, else plain"`
 	Color   string `enum:"auto,always,never" default:"auto" help:"Colour output: auto, always or never. auto colours a terminal unless NO_COLOR is set"`
 	Debug   bool   `help:"Show debug information including Nix commands"`
 	Flake   string `short:"f" completion-predictor:"dir" help:"Path to flake" default:"."`
