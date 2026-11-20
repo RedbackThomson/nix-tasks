@@ -65,11 +65,11 @@ func (r TaskResult) ExitCode() int {
 	return -1
 }
 
-// Run executes target and everything it needs, starting each task as soon as
-// all of its dependencies have succeeded. Every task in the execution set gets
-// a result, returned in execution order.
-func (e *Executor) Run(ctx context.Context, graph *TaskGraph, target string) ([]TaskResult, error) {
-	order, err := graph.ExecutionOrder(target)
+// Run executes the targets and everything they need, starting each task as
+// soon as all of its dependencies have succeeded. Every task in the execution
+// set gets a result, returned in execution order.
+func (e *Executor) Run(ctx context.Context, graph *TaskGraph, targets ...string) ([]TaskResult, error) {
+	order, err := graph.ExecutionOrder(targets...)
 	if err != nil {
 		return nil, err
 	}

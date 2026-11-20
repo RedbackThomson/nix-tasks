@@ -541,3 +541,40 @@ func TestRun_ShellOptions(t *testing.T) {
 		})
 	}
 }
+
+func TestRun_SeveralTargetsShareDependencies(t *testing.T) {
+	tasks := map[string]config.Task{
+		"gen":   logged("gen"),
+		"build": logged("build", "gen"),
+		"lint":  logged("lint", "gen"),
+		"docs":  logged("docs"),
+	}
+	graph, err := runner.NewTaskGraph(tasks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	ex := runner.NewExecutor(&fakeNix{}, &config.Config{Tasks: tasks}, runner.Options{FlakeRoot: dir, DevEnvDir: t.TempDir()})
+	results, err := ex.Run(context.Background(), graph, "build", "lint")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var names []string
+	for _, r := range results {
+		if r.State != runner.Succeeded {
+			t.Errorf("%s: state %v, want succeeded (err: %v)", r.Name, r.State, r.Error)
+		}
+		names = append(names, r.Name)
+	}
+	if want := []string{"gen", "build", "lint"}; !slices.Equal(names, want) {
+		t.Errorf("results %v, want %v", names, want)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "ran.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ran := strings.Fields(string(data)); len(ran) != 3 || ran[0] != "gen" {
+		t.Errorf("expected gen once and first, ran %v", ran)
+	}
+}

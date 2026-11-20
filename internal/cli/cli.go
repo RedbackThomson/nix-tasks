@@ -16,7 +16,7 @@ type Globals struct {
 type CLI struct {
 	Globals
 
-	Run         RunCmd         `cmd:"" help:"Run a task"`
+	Run         RunCmd         `cmd:"" help:"Run one or more tasks"`
 	List        ListCmd        `cmd:"" help:"List available tasks and shells"`
 	Describe    DescribeCmd    `cmd:"" help:"Show task details"`
 	Graph       GraphCmd       `cmd:"" help:"Show execution graph for a task"`

@@ -177,7 +177,7 @@ func TestCompletions_InRealShells(t *testing.T) {
 	}{
 		{"nix-tasks gr", "graph"},
 		{"nix-tasks run ", "build lint test"},
-		{"nix-tasks run build ", ""},
+		{"nix-tasks run build lint ", "build lint test"},
 		{"nix-tasks run --contin", "--continue-on-error"},
 		{"nix-tasks -f flakes/one run ", "build in-one lint test"},
 		{"nix-tasks describe -f flakes/two ", "build in-two lint test"},
