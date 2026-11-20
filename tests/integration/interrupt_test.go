@@ -5,6 +5,8 @@ package integration_test
 import (
 	"bytes"
 	"errors"
+	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,20 +33,21 @@ const signalTasksConfig = `{
 }`
 
 // startNixTasks starts nix-tasks in the background with the same environment
-// as runNixTasksInDir.
-func startNixTasks(t *testing.T, binary, logDir string, args ...string) (*exec.Cmd, *bytes.Buffer) {
+// as runNixTasksInDir. It returns stdout and stderr together, and stdout
+// alone.
+func startNixTasks(t *testing.T, binary, logDir string, args ...string) (*exec.Cmd, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Dir = logDir
 	cmd.Env = append(testEnviron(), "NIX_TASKS_CACHE_DIR="+t.TempDir(), "NIX_TASKS_TEST_LOG_DIR="+logDir)
-	var out bytes.Buffer
-	cmd.Stdout = &out
+	var out, stdout bytes.Buffer
+	cmd.Stdout = io.MultiWriter(&out, &stdout)
 	cmd.Stderr = &out
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
-	return cmd, &out
+	return cmd, &out, &stdout
 }
 
 // waitExit waits for cmd and returns its exit code, failing if it takes
@@ -89,7 +92,7 @@ func TestRun_SignalStopsTasksAndExits130(t *testing.T) {
 	dir := writeTempFlake(t, signalTasksConfig, map[string]string{})
 	logDir := t.TempDir()
 
-	cmd, out := startNixTasks(t, binary, logDir, "run", "after-slow", "-f", dir)
+	cmd, out, stdout := startNixTasks(t, binary, logDir, "--output=json", "run", "after-slow", "-f", dir)
 	pid, err := strconv.Atoi(waitForFile(t, filepath.Join(logDir, "child.pid"), 90*time.Second))
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +105,14 @@ func TestRun_SignalStopsTasksAndExits130(t *testing.T) {
 		t.Errorf("exit code %d, want 130\noutput: %s", code, out)
 	}
 
-	assertStatuses(t, out.String(), map[string]string{"slow": "interrupted", "after-slow": "skipped"})
+	doc := decodeJSON(t, stdout.Bytes())
+	states := map[string]string{}
+	for _, task := range doc.Tasks {
+		states[task.Name] = task.State
+	}
+	if !maps.Equal(states, map[string]string{"slow": "interrupted", "after-slow": "skipped"}) || doc.ExitCode != 130 {
+		t.Errorf("interrupted run reported %v with exit code %d", states, doc.ExitCode)
+	}
 	if syscall.Kill(pid, 0) == nil {
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 		t.Errorf("task's child process %d survived the interrupt", pid)
@@ -118,7 +128,7 @@ func TestRun_SignalDuringConfigLoadExits130(t *testing.T) {
 	dir := writeTempFlake(t, signalTasksConfig, map[string]string{})
 	logDir := t.TempDir()
 
-	cmd, out := startNixTasks(t, binary, logDir, "run", "slow", "-f", dir)
+	cmd, out, _ := startNixTasks(t, binary, logDir, "run", "slow", "-f", dir)
 	time.Sleep(100 * time.Millisecond)
 	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
 		t.Fatal(err)
@@ -142,7 +152,7 @@ func TestRun_SecondSignalKillsImmediately(t *testing.T) {
 }`, map[string]string{})
 	logDir := t.TempDir()
 
-	cmd, out := startNixTasks(t, binary, logDir, "run", "stubborn", "-f", dir)
+	cmd, out, _ := startNixTasks(t, binary, logDir, "run", "stubborn", "-f", dir)
 	pid, err := strconv.Atoi(waitForFile(t, filepath.Join(logDir, "child.pid"), 90*time.Second))
 	if err != nil {
 		t.Fatal(err)

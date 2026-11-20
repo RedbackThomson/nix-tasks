@@ -356,7 +356,10 @@ func TestValidate(t *testing.T) {
 
 **Integration tests (require Nix):** they live in `tests/integration`, carry
 the `integration` build tag, run the `nix-tasks` binary against the flakes in
-`tests/integration/testdata`, and skip when `nix` is not on `PATH`.
+`tests/integration/testdata`, and skip when `nix` is not on `PATH`. Assert a
+run's results through `--output=json` (`runJSON`, `runFlakeJSON`, and
+`runResult.assertStates`/`task`/`log`/`finishedBefore`), not by parsing the
+human summary; match text only in tests of the human-readable output.
 
 ```go
 //go:build integration

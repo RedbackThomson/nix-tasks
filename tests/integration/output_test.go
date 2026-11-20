@@ -77,7 +77,9 @@ func TestOutput_PipedShowsProgressAndFailureOnce(t *testing.T) {
 	if !strings.Contains(stdout, "▶ base\n✗ base (") || !strings.Contains(stdout, "(exit code 3)\n") {
 		t.Errorf("expected start and finish lines for base:\n%s", stdout)
 	}
-	assertStatuses(t, stdout, map[string]string{"base": "failed", "left": "skipped", "right": "skipped", "top": "skipped"})
+	r := runJSON(t, t.TempDir(), t.TempDir(), "run", "top", "-f", dir)
+	r.assertCode(t, 3)
+	r.assertStates(t, map[string]string{"base": "failed", "left": "skipped", "right": "skipped", "top": "skipped"})
 	if n := strings.Count(stdout, "BASE-FAILED"); n != 1 {
 		t.Errorf("failed output shown %d times, want once:\n%s", n, stdout)
 	}

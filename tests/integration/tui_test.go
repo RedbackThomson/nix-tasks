@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -88,11 +89,17 @@ func TestRun_SeveralTasksInOneRun(t *testing.T) {
 	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "simple")
 
+	r := runFlakeJSON(t, flakePath, t.TempDir(), "run", "hello", "goodbye")
+	r.assertCode(t, 0)
+	r.assertStates(t, map[string]string{"hello": "succeeded", "goodbye": "succeeded"})
+	if !slices.Equal(r.Doc.Targets, []string{"hello", "goodbye"}) {
+		t.Errorf("targets %v", r.Doc.Targets)
+	}
+
 	stdout, stderr, err := runNixTasks(t, binary, "run", "hello", "goodbye", "-f", flakePath)
 	if err != nil {
 		t.Fatalf("nix-tasks run failed: %v\nstdout: %s\nstderr: %s", err, stdout, stderr)
 	}
-	assertStatuses(t, stdout, map[string]string{"hello": "passed", "goodbye": "passed"})
 	if n := strings.Count(stdout, "Completed:"); n != 1 {
 		t.Errorf("expected one summary, got %d:\n%s", n, stdout)
 	}
