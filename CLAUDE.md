@@ -493,7 +493,7 @@ func (e *Evaluator) Eval(ctx context.Context, attr string, result any) error {
 
 Shell tasks run their script inside the task's shell:
 `Evaluator.DevelopCmd` builds `nix develop <flake>#nixTasksShells."<system>"."<task>"
---command bash -e -c <script>`, where the script is the task's `script` or its
+--command bash -e -o pipefail -c <script>`, where the script is the task's `script` or its
 `commands` joined by newlines. Build tasks run
 `nix build <flake>#nixTasksBuilds."<system>"."<task>"^* --no-link --json`
 (`Evaluator.BuildCmd`) and link each output nix reports to
