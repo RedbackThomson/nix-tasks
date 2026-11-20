@@ -4,24 +4,21 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-tasks.url = "path:../..";
+    nix-tasks.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, nixpkgs, nix-tasks }:
-    let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-
-      mkConfig = system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          lib = nix-tasks.lib.${system};
-        in lib.evalConfig {
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit nixpkgs;
+      modules = [
+        ({ pkgs, tasksLib, ... }: {
           packages = {
             go = pkgs.go;
+            nix-tasks = nix-tasks.packages.${pkgs.stdenv.hostPlatform.system}.default;
           };
 
           tasks = {
-            build = lib.mkTask {
+            build = tasksLib.mkTask {
               description = "Build the application";
               deps = [ "go" ];
               commands = [
@@ -34,7 +31,7 @@
               ];
             };
 
-            test = lib.mkTask {
+            test = tasksLib.mkTask {
               description = "Run tests";
               deps = [ "go" ];
               commands = [
@@ -43,7 +40,7 @@
               ];
             };
 
-            clean = lib.mkTask {
+            clean = tasksLib.mkTask {
               description = "Clean build artifacts";
               commands = [
                 "rm -rf bin/"
@@ -54,42 +51,15 @@
 
           devShells = {
             default = {
-              packages = [ "go" ];
+              packages = [ "go" "nix-tasks" ];
               shellHook = ''
                 echo "Development shell ready"
               '';
             };
           };
-        };
-    in {
-      # Expose nix-tasks CLI as a package and app
-      packages = forAllSystems (system: {
-        nix-tasks = nix-tasks.packages.${system}.default;
-        default = nix-tasks.packages.${system}.default;
-      });
-
-      apps = forAllSystems (system: {
-        nix-tasks = nix-tasks.apps.${system}.default;
-        default = nix-tasks.apps.${system}.default;
-      });
-
-      # Expose task configuration for nix-tasks CLI
-      nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
-      nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
-
-      # Expose dev shells with nix-tasks available
-      devShells = forAllSystems (system:
-        let
-          config = mkConfig system;
-          pkgs = nixpkgs.legacyPackages.${system};
-        in
-        config.devShells // {
-          # Extend the default shell to include nix-tasks
-          default = config.devShells.default.overrideAttrs (old: {
-            buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
-          });
-        }
-      );
+        })
+      ];
+    } // {
+      inherit (nix-tasks) packages apps;
     };
 }

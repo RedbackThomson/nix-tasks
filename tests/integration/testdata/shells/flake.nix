@@ -7,28 +7,23 @@
   };
 
   outputs = { self, nixpkgs, nix-tasks }:
-    let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-
-      mkConfig = system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          lib = nix-tasks.lib.${system};
-        in lib.evalConfig {
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit nixpkgs;
+      modules = [
+        ({ pkgs, tasksLib, ... }: {
           packages = {
             jq = pkgs.jq;
             curl = pkgs.curl;
           };
 
           tasks = {
-            check-jq = lib.mkTask {
+            check-jq = tasksLib.mkTask {
               description = "Check jq is available";
               deps = [ "jq" ];
               commands = [ "jq --version" ];
             };
 
-            check-curl = lib.mkTask {
+            check-curl = tasksLib.mkTask {
               description = "Check curl is available";
               deps = [ "curl" ];
               commands = [ "curl --version | head -1" ];
@@ -58,11 +53,7 @@
               '';
             };
           };
-        };
-    in {
-      nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
-      nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
-      devShells = forAllSystems (system: (mkConfig system).devShells);
+        })
+      ];
     };
 }

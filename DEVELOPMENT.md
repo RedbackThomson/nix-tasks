@@ -60,6 +60,15 @@ go test -tags=integration ./tests/integration -run TestRun_SimpleTask
 
 Integration tests build the nix-tasks binary and test against real Nix flakes in `tests/integration/testdata/`.
 
+### Nix Library Tests
+
+`lib/tests.nix` covers the Nix library (merging, assertions, builders, shell
+inheritance and the output contract) and runs as the flake's `checks`:
+
+```bash
+nix flake check
+```
+
 ## Code Style
 
 ### Formatting and Linting

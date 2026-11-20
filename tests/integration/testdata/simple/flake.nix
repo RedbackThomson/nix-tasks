@@ -7,31 +7,26 @@
   };
 
   outputs = { self, nixpkgs, nix-tasks }:
-    let
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-
-      mkConfig = system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          lib = nix-tasks.lib.${system};
-        in lib.evalConfig {
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit nixpkgs;
+      modules = [
+        ({ tasksLib, ... }: {
           packages = {};
 
           tasks = {
-            hello = lib.mkTask {
+            hello = tasksLib.mkTask {
               description = "Say hello";
               commands = [ "echo 'Hello, World!'" ];
               # Declared so this task is cacheable; cache tests rely on it.
               inputs = [ "flake.nix" ];
             };
 
-            goodbye = lib.mkTask {
+            goodbye = tasksLib.mkTask {
               description = "Say goodbye";
               commands = [ "echo 'Goodbye!'" ];
             };
 
-            multi-line = lib.mkTask {
+            multi-line = tasksLib.mkTask {
               description = "Multi-line output";
               commands = [
                 "echo 'Line 1'"
@@ -46,11 +41,7 @@
               packages = [];
             };
           };
-        };
-    in {
-      nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
-      nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
-      devShells = forAllSystems (system: (mkConfig system).devShells);
+        })
+      ];
     };
 }

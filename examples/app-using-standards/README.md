@@ -7,7 +7,7 @@ This example demonstrates how a repository extends company-wide standards with p
 This example shows:
 
 1. **Importing company standards** - Uses `company-standards` flake as an input
-2. **Extending with `lib.extend`** - Merges standards with repo-specific config
+2. **Composing modules** - Lists the standards module next to a repo module in `mkFlakeOutputs`
 3. **Adding project packages** - Node.js, protobuf tools for this specific service
 4. **Customizing standard tasks** - Override lint config, add test setup
 5. **Adding new tasks** - Proto generation, frontend build, Docker, deployment
@@ -127,31 +127,32 @@ All shells inherit from `company-standards` and include nix-tasks:
 Replace the entire command list:
 
 ```nix
-tasks.lint = {
-  commands = lib.override [
-    "golangci-lint run --timeout 10m --config .golangci.yml ./..."
-  ];
-};
+tasks.lint.commands = lib.mkForce [
+  "golangci-lint run --timeout 10m --config .golangci.yml ./..."
+];
 ```
+
+Defining `commands` again without `lib.mkForce` (or `mkBefore`/`mkAfter`) is an
+error, so a repo can't accidentally run both its own and the standard commands.
 
 ### 2. Extend a Standard Task
 
 Add commands before existing ones:
 
 ```nix
-tasks.test-unit = {
-  commands = lib.prepend [
-    "echo 'Running app-specific test setup...'"
-  ];
-};
+tasks.test-unit.commands = lib.mkBefore [
+  "echo 'Running app-specific test setup...'"
+];
 ```
+
+`lib.mkAfter` adds commands after the standard ones.
 
 ### 3. Add New Tasks
 
 Define completely new tasks:
 
 ```nix
-tasks.proto-gen = lib.mkTask {
+tasks.proto-gen = tasksLib.mkTask {
   description = "Generate Go code from protobuf definitions";
   deps = [ "protobuf" "protoc-gen-go" "protoc-gen-go-grpc" ];
   commands = [ "protoc --go_out=. ..." ];
@@ -160,12 +161,12 @@ tasks.proto-gen = lib.mkTask {
 
 ### 4. Extend Dev Shells
 
-Add packages to standard shells:
+Add packages to standard shells; lists from every module are concatenated:
 
 ```nix
 devShells.default = {
-  packages = lib.append [ "nodejs" "protobuf" ];
-  shellHook = lib.override ''
+  packages = [ "nodejs" "protobuf" ];
+  shellHook = lib.mkForce ''
     echo "MyService Development Environment"
   '';
 };
@@ -176,7 +177,7 @@ devShells.default = {
 Run a task automatically whenever a standard task runs, without modifying the standard task's definition:
 
 ```nix
-tasks.generate-sbom = lib.mkTask {
+tasks.generate-sbom = tasksLib.mkTask {
   description = "Generate SBOM after build";
   after = [ "task:build" ];  # Runs whenever "build" runs
   commands = [ "generate-sbom > sbom.json" ];
@@ -200,29 +201,33 @@ devShells.frontend = {
 
 ## How It Works
 
-The key pattern is using `lib.extend`:
+The flake passes both modules to `mkFlakeOutputs`:
 
 ```nix
-let
-  standards = company-standards.standardConfig.${system};
-  config = lib.extend standards {
-    # Your customizations here
-  };
-in lib.evalConfig config;
+nix-tasks.lib.mkFlakeOutputs {
+  inherit nixpkgs;
+  modules = [
+    company-standards.nixTasksModules.default
+    ({ lib, pkgs, tasksLib, ... }: {
+      # Your customizations here
+    })
+  ];
+}
 ```
 
-This deep merges your config with company standards:
+The module system merges every module's definitions:
 
-- New keys are added
-- Existing keys with override markers (`lib.override`, `lib.append`, etc.) are modified
-- Other existing keys are merged recursively
+- New tasks, packages and shells are added
+- Lists (`deps`, `depends`, shell `packages`, ...) are concatenated, and `env` attribute sets merged
+- `lib.mkForce` replaces a value; `lib.mkBefore` / `lib.mkAfter` order list items
+- Conflicting plain values (two different `description`s, two `commands` lists) are errors that name the option
 
 ## Migration from Make
 
 This example shows how to gradually migrate from Make to nix-tasks:
 
 1. Keep your Makefile during migration
-2. Use `lib.compat.make.importMakeTargets` to wrap legacy targets
+2. Use `tasksLib.compat.make.importMakeTargets` to wrap legacy targets
 3. Gradually rewrite Make targets as native nix-tasks
 4. Remove Makefile when migration is complete
 

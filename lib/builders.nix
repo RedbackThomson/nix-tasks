@@ -1,114 +1,59 @@
+# Builders return partial task definitions: only the fields the caller set,
+# plus builder-specific ones, so a builder used in one module merges with a
+# definition of the same task in another instead of resetting its fields.
+# Values a builder invents are mkDefault so any plain definition wins.
 { lib, pkgs }:
+let
+  taskFields = [
+    "description" "type" "deps" "depends" "after" "commands" "script" "env"
+    "workingDir" "continueOnError" "inputs" "noCache" "derivation"
+  ];
+in
 rec {
-  # Shell task builder (executes shell commands in nix develop)
-  mkShellTask = {
-    name ? null,
-    description ? "",
-    deps ? [],
-    depends ? [],
-    after ? [],
-    commands ? [],
-    script ? null,
-    env ? {},
-    workingDir ? null,
-    inputs ? [],
-    continueOnError ? false,
-    noCache ? false,
-    ...
-  }@args:
-    # Builders accept unknown arguments, so without this check `outputs`
-    # would be dropped silently and users would assume it does something.
-    if args ? outputs then
-      throw ("nix-tasks: shell task${lib.optionalString (name != null) " '${name}'"} sets `outputs`, which shell tasks do not support. "
-        + "Remove it; use `inputs` to control caching, or a build task (mkGoTask or `derivation`) to produce outputs linked under .nix-tasks/.")
-    else {
-      type = "shell";
-      inherit description deps depends after commands script env workingDir inputs continueOnError noCache;
-    };
+  mkTask = args: args;
 
-  # Backward compatibility: mkTask becomes mkShellTask
-  mkTask = mkShellTask;
+  mkShellTask = mkTask;
 
-  # Go-specific task builder using buildGoModule
-  # Creates a build task that uses Nix's buildGoModule
   mkGoTask = {
-    name ? null,
-    description ? "Build ${pname}",
-    pname ? name,
+    pname,
     version ? "0.1.0",
     src,
     vendorHash ? null,
-    vendorSha256 ? null,
     subPackages ? null,
-    ldflags ? "",
-    tags ? [],
+    ldflags ? [ ],
+    tags ? [ ],
     CGO_ENABLED ? "0",
-    env ? {},
-    deps ? [],
-    depends ? [],
-    after ? [],
-    workingDir ? null,
-    continueOnError ? false,
-    noCache ? false,
+    env ? { },
     ...
   }@args:
     let
-      # Attributes to remove for buildGoModule
-      taskOnlyAttrs = [
-        "name" "description" "deps" "depends" "after" "workingDir" "continueOnError" "noCache"
-      ];
-
-      goEnv = { inherit CGO_ENABLED; } // env;
-
-      # Build the Go package using buildGoModule
-      goPackage = pkgs.buildGoModule ({
-        inherit pname version src;
-        vendorHash = if vendorHash != null then vendorHash else vendorSha256;
-      } // (lib.optionalAttrs (subPackages != null) { inherit subPackages; })
-        // (lib.optionalAttrs (ldflags != "") { inherit ldflags; })
-        // (lib.optionalAttrs (tags != []) { inherit tags; })
-        // (builtins.removeAttrs args (taskOnlyAttrs ++ [
-          "pname" "version" "src" "vendorHash" "vendorSha256"
-          "subPackages" "ldflags" "tags" "CGO_ENABLED" "env"
-        ]))
-        // { env = goEnv; });
-    in {
+      goArgs = builtins.removeAttrs args (taskFields ++ [ "CGO_ENABLED" "env" "subPackages" ]);
+    in
+    lib.filterAttrs (n: _: n != "env" && builtins.elem n taskFields) args // {
       type = "build";
-      inherit description deps depends after workingDir continueOnError noCache;
-      env = goEnv;
-      derivation = goPackage;
+      description = args.description or (lib.mkDefault "Build ${pname}");
+      derivation = pkgs.buildGoModule (goArgs // {
+        inherit version vendorHash ldflags tags;
+        env = { inherit CGO_ENABLED; } // env;
+      } // lib.optionalAttrs (subPackages != null) { inherit subPackages; });
     };
 
-  # Docker task builder
   mkDockerTask = {
-    name ? null,
-    description ? "",
     image,
     tag ? "latest",
     context ? ".",
     dockerfile ? "Dockerfile",
-    deps ? [],
     ...
   }@args:
-    mkShellTask ((builtins.removeAttrs args ["image" "tag" "context" "dockerfile" "name" "deps"]) // {
-      inherit description;
-      deps = lib.unique (["docker"] ++ deps);
-      commands = args.commands or [
-        "docker build -t ${image}:${tag} -f ${dockerfile} ${context}"
-      ];
-    });
+    builtins.removeAttrs args [ "image" "tag" "context" "dockerfile" ] // {
+      deps = [ "docker" ] ++ args.deps or [ ];
+      commands = args.commands or (lib.mkDefault [
+        (lib.escapeShellArgs [ "docker" "build" "-t" "${image}:${tag}" "-f" dockerfile context ])
+      ]);
+    };
 
-  # Compound task (groups other tasks)
-  mkCompoundTask = {
-    name ? null,
-    description ? "",
-    tasks,
-    depends ? [],
-    ...
-  }@args:
-    mkShellTask ((builtins.removeAttrs args ["tasks" "name" "depends"]) // {
-      inherit description;
-      depends = (map (t: "task:${t}") tasks) ++ depends;
-      commands = args.commands or [];
-    });
+  mkCompoundTask = { tasks, ... }@args:
+    builtins.removeAttrs args [ "tasks" ] // {
+      depends = map (t: "task:${t}") tasks ++ args.depends or [ ];
+    };
 }

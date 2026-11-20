@@ -9,30 +9,32 @@ The company-standards flake provides:
 1. **Standard package versions** - Blessed versions of tools (Go, Docker, kubectl, etc.) used across the organization
 2. **Standard tasks** - Common tasks (lint, test, build) with consistent behavior
 3. **Standard dev shells** - Base development environments that repos can extend
-4. **Extensibility** - A `standardConfig` export that repos can import and customize
+4. **Extensibility** - A `nixTasksModules.default` module that repos import and customize
 
 ## Usage
 
 ### For Repository Owners
 
-Repositories import this flake and extend it with repo-specific customizations. See the [app-using-standards](../app-using-standards/) example for a complete demonstration.
+Repositories import the standards module and add their own module next to it. See the [app-using-standards](../app-using-standards/) example for a complete demonstration.
 
 ```nix
 {
   inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nix-tasks.url = "github:redbackthomson/nix-tasks";
+    nix-tasks.inputs.nixpkgs.follows = "nixpkgs";
     company-standards.url = "github:your-company/nix-tasks-standards";
+    company-standards.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = { company-standards, nix-tasks, ... }:
-    let
-      lib = nix-tasks.lib.${system};
-      standards = company-standards.standardConfig.${system};
-
-      # Extend standards with repo-specific config
-      config = lib.extend standards {
-        # Add repo-specific packages, tasks, and shells
-      };
-    in lib.evalConfig config;
+  outputs = { nixpkgs, nix-tasks, company-standards, ... }:
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit nixpkgs;
+      modules = [
+        company-standards.nixTasksModules.default
+        ./nix-tasks.nix   # repo-specific packages, tasks and shells
+      ];
+    };
 }
 ```
 
@@ -131,13 +133,16 @@ nix develop
 
 Repositories extending these standards should:
 
-1. **Use `lib.extend`** to merge with standards
-2. **Use override markers** for explicit modifications:
-   - `lib.override` - Replace a value completely
-   - `lib.append` - Add to the end of a list
-   - `lib.prepend` - Add to the beginning of a list
-3. **Add repo-specific tasks** - New tasks unique to the repository
-4. **Extend shells** - Add packages to standard shells without replacing them
+1. **Import the module** - add `company-standards.nixTasksModules.default` to `modules`
+2. **Say how a value changes** when the standard already sets it:
+   - `lib.mkForce` - replace a value completely
+   - `lib.mkBefore` / `lib.mkAfter` - add commands, depends or packages before / after the standard ones
+   - plain definitions of lists such as `deps`, `depends` or shell `packages` are appended
+   - `commands` and `script` refuse to merge two plain definitions, so a repo cannot accidentally run both its own and the standard commands
+3. **Add repo-specific tasks** - new tasks unique to the repository
+4. **Extend shells** - define the same shell again to add packages, env or shellHook lines
+
+Standards mark values that repos are expected to change with `lib.mkDefault` (for example `continueOnError` on the lint tasks), so a plain repo definition replaces them without `mkForce`.
 
 See [app-using-standards](../app-using-standards/) for examples.
 
@@ -152,17 +157,12 @@ When updating tool versions or standard configurations:
 
 ## Company-Specific Builders
 
-You can add company-specific task builders by extending the `lib` export:
+Builders are ordinary functions that return task definitions, so a standards flake can export its own next to the module:
 
 ```nix
-lib = forAllSystems (system:
-  let
-    baseLib = nix-tasks.lib.${system};
-  in baseLib // {
-    # Add custom builder
-    mkServiceTask = { name, ... }: {
-      # Custom task configuration
-    };
-  }
-);
+lib.mkServiceTask = { service, ... }: {
+  description = "Build ${service}";
+  deps = [ "go" ];
+  commands = [ "go build -o bin/${service} ./cmd/${service}" ];
+};
 ```

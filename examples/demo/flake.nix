@@ -4,23 +4,18 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     nix-tasks.url = "path:../..";
+    nix-tasks.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = { self, nixpkgs, nix-tasks }:
-    let
-      # Support multiple systems
-      supportedSystems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
-
-      # Build config for a given system
-      mkConfig = system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          lib = nix-tasks.lib.${system};
-        in lib.evalConfig {
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit nixpkgs;
+      modules = [
+        ({ pkgs, tasksLib, ... }: {
           # Available packages for tasks and shells
           packages = {
             go = pkgs.go;
+            nix-tasks = nix-tasks.packages.${pkgs.stdenv.hostPlatform.system}.default;
             nodejs = pkgs.nodejs;
             jq = pkgs.jq;
             curl = pkgs.curl;
@@ -28,8 +23,8 @@
           };
 
           tasks = {
-            # ============ Code Generation ============
-            generate = lib.mkTask {
+            # Code Generation
+            generate = tasksLib.mkTask {
               description = "Generate mocks and code";
               deps = [ "go" ];
               commands = [
@@ -40,8 +35,8 @@
               ];
             };
 
-            # ============ Build Tasks ============
-            build = lib.mkTask {
+            # Build Tasks
+            build = tasksLib.mkTask {
               description = "Build the application";
               deps = [ "go" ];
               depends = [ "task:generate" ];
@@ -56,7 +51,7 @@
               inputs = [ "**/*.go" "go.mod" ];
             };
 
-            build-frontend = lib.mkTask {
+            build-frontend = tasksLib.mkTask {
               description = "Build frontend assets";
               deps = [ "nodejs" ];
               commands = [
@@ -68,8 +63,8 @@
               inputs = [ "frontend/**/*" ];
             };
 
-            # ============ Quality Tasks ============
-            lint = lib.mkTask {
+            # Quality Tasks
+            lint = tasksLib.mkTask {
               description = "Run linters";
               deps = [ "go" ];
               depends = [ "task:generate" ];
@@ -80,7 +75,7 @@
               continueOnError = true;
             };
 
-            fmt = lib.mkTask {
+            fmt = tasksLib.mkTask {
               description = "Format code";
               deps = [ "go" ];
               commands = [
@@ -89,8 +84,8 @@
               ];
             };
 
-            # ============ Test Tasks ============
-            test-unit = lib.mkTask {
+            # Test Tasks
+            test-unit = tasksLib.mkTask {
               description = "Run unit tests";
               deps = [ "go" ];
               depends = [ "task:generate" ];
@@ -102,7 +97,7 @@
               ];
             };
 
-            test-integration = lib.mkTask {
+            test-integration = tasksLib.mkTask {
               description = "Run integration tests";
               deps = [ "go" ];
               depends = [ "task:build" ];
@@ -114,13 +109,13 @@
               ];
             };
 
-            test = lib.mkCompoundTask {
+            test = tasksLib.mkCompoundTask {
               description = "Run all tests";
               tasks = [ "test-unit" "test-integration" ];
             };
 
-            # ============ Docker Tasks (mocked) ============
-            docker-build = lib.mkTask {
+            # Docker Tasks (mocked)
+            docker-build = tasksLib.mkTask {
               description = "Build Docker image";
               deps = [];
               depends = [ "task:build" "task:build-frontend" ];
@@ -135,7 +130,7 @@
               ];
             };
 
-            docker-push = lib.mkTask {
+            docker-push = tasksLib.mkTask {
               description = "Push Docker image to registry";
               deps = [];
               depends = [ "task:docker-build" ];
@@ -146,8 +141,8 @@
               ];
             };
 
-            # ============ Deployment Tasks ============
-            deploy-staging = lib.mkTask {
+            # Deployment Tasks
+            deploy-staging = tasksLib.mkTask {
               description = "Deploy to staging environment";
               deps = [ "jq" ];
               depends = [ "task:docker-push" "task:test" ];
@@ -163,7 +158,7 @@
               };
             };
 
-            deploy-prod = lib.mkTask {
+            deploy-prod = tasksLib.mkTask {
               description = "Deploy to production environment";
               deps = [ "jq" ];
               depends = [ "task:deploy-staging" ];
@@ -179,8 +174,8 @@
               };
             };
 
-            # ============ Utility Tasks ============
-            clean = lib.mkTask {
+            # Utility Tasks
+            clean = tasksLib.mkTask {
               description = "Clean build artifacts";
               deps = [];
               commands = [
@@ -190,7 +185,7 @@
               ];
             };
 
-            health-check = lib.mkTask {
+            health-check = tasksLib.mkTask {
               description = "Check service health";
               deps = [ "curl" "jq" ];
               commands = [
@@ -199,13 +194,13 @@
               ];
             };
 
-            # ============ Compound Tasks ============
-            ci = lib.mkCompoundTask {
+            # Compound Tasks
+            ci = tasksLib.mkCompoundTask {
               description = "Run full CI pipeline";
               tasks = [ "lint" "test" "docker-build" ];
             };
 
-            release = lib.mkCompoundTask {
+            release = tasksLib.mkCompoundTask {
               description = "Full release pipeline";
               tasks = [ "ci" "docker-push" "deploy-staging" ];
             };
@@ -214,7 +209,7 @@
           devShells = {
             # Minimal shell for CI
             minimal = {
-              packages = [ "go" ];
+              packages = [ "go" "nix-tasks" ];
               env = {
                 CGO_ENABLED = "0";
               };
@@ -241,42 +236,9 @@
               '';
             };
           };
-        };
-    in {
-      # Expose nix-tasks CLI as a package and app
-      packages = forAllSystems (system: {
-        nix-tasks = nix-tasks.packages.${system}.default;
-        default = nix-tasks.packages.${system}.default;
-      });
-
-      apps = forAllSystems (system: {
-        nix-tasks = nix-tasks.apps.${system}.default;
-        default = nix-tasks.apps.${system}.default;
-      });
-
-      # Expose task configuration for nix-tasks CLI
-      nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
-      nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
-
-      # Expose dev shells with nix-tasks available
-      devShells = forAllSystems (system:
-        let
-          config = mkConfig system;
-          pkgs = nixpkgs.legacyPackages.${system};
-        in
-        config.devShells // {
-          # Extend all shells to include nix-tasks
-          minimal = config.devShells.minimal.overrideAttrs (old: {
-            buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
-          });
-          ci = config.devShells.ci.overrideAttrs (old: {
-            buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
-          });
-          default = config.devShells.default.overrideAttrs (old: {
-            buildInputs = (old.buildInputs or []) ++ [ nix-tasks.packages.${system}.default ];
-          });
-        }
-      );
+        })
+      ];
+    } // {
+      inherit (nix-tasks) packages apps;
     };
 }

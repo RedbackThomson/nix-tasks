@@ -15,8 +15,7 @@ import (
 
 // writeTempFlake creates a flake outside the repository so tests can add
 // files (such as unique build inputs) without them being tracked by git.
-// tasksConfig is the attrset passed to lib.evalConfig, with pkgs and lib in
-// scope.
+// tasksConfig is a module body with pkgs, lib and tasksLib in scope.
 func writeTempFlake(t *testing.T, tasksConfig string, files map[string]string) string {
 	t.Helper()
 
@@ -33,19 +32,9 @@ func writeTempFlake(t *testing.T, tasksConfig string, files map[string]string) s
   inputs.nix-tasks.url = "path:%s";
 
   outputs = { self, nix-tasks }:
-    let
-      nixpkgs = nix-tasks.inputs.nixpkgs;
-      forAllSystems = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
-      mkConfig = system:
-        let
-          pkgs = nixpkgs.legacyPackages.${system};
-          lib = nix-tasks.lib.${system};
-        in lib.evalConfig (%s);
-    in {
-      nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
-      nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
-      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
-      devShells = forAllSystems (system: (mkConfig system).devShells);
+    nix-tasks.lib.mkFlakeOutputs {
+      inherit (nix-tasks.inputs) nixpkgs;
+      modules = [ ({ pkgs, lib, tasksLib, ... }: %s) ];
     };
 }
 `, root, tasksConfig)

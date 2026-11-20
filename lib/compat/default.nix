@@ -7,13 +7,11 @@
 #   - Make (Makefile)
 #
 # Usage:
-#   compat = nix-tasks.lib.compat;
-#   tasks = {
-#     legacy = compat.make.mkMakeTask { target = "build"; };
-#   };
+#   { tasksLib, ... }: {
+#     tasks.legacy = tasksLib.compat.make.mkMakeTask { target = "build"; };
+#   }
 #
-{ lib, pkgs, builders }:
+{ lib }:
 {
-  # Make compatibility helpers
-  make = import ./make.nix { inherit lib pkgs builders; };
+  make = import ./make.nix { inherit lib; };
 }

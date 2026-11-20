@@ -16,7 +16,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "valid config",
 			config: &config.Config{
-				Packages: map[string]string{"go": "/nix/store/abc-go"},
+				Packages: []string{"go"},
 				Tasks: map[string]config.Task{
 					"build": {Deps: []string{"go"}},
 				},
@@ -27,7 +27,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "unknown package in task",
 			config: &config.Config{
-				Packages: map[string]string{},
+				Packages: []string{},
 				Tasks: map[string]config.Task{
 					"build": {Deps: []string{"go"}},
 				},
@@ -38,7 +38,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "unknown task dependency",
 			config: &config.Config{
-				Packages: map[string]string{"go": "/nix/store/abc-go"},
+				Packages: []string{"go"},
 				Tasks: map[string]config.Task{
 					"deploy": {Depends: []string{"task:build"}},
 				},
@@ -49,7 +49,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "valid task dependency",
 			config: &config.Config{
-				Packages: map[string]string{"go": "/nix/store/abc-go"},
+				Packages: []string{"go"},
 				Tasks: map[string]config.Task{
 					"build":  {Deps: []string{"go"}},
 					"deploy": {Depends: []string{"task:build"}},
@@ -61,7 +61,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "unknown package in shell",
 			config: &config.Config{
-				Packages: map[string]string{},
+				Packages: []string{},
 				Tasks:    map[string]config.Task{},
 				DevShells: map[string]config.Shell{
 					"default": {Packages: []string{"go"}},
@@ -72,7 +72,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "unknown parent shell",
 			config: &config.Config{
-				Packages: map[string]string{"go": "/nix/store/abc-go"},
+				Packages: []string{"go"},
 				Tasks:    map[string]config.Task{},
 				DevShells: map[string]config.Shell{
 					"default": {Extends: "ci", Packages: []string{"go"}},
@@ -83,7 +83,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "valid shell inheritance",
 			config: &config.Config{
-				Packages: map[string]string{"go": "/nix/store/abc-go"},
+				Packages: []string{"go"},
 				Tasks:    map[string]config.Task{},
 				DevShells: map[string]config.Shell{
 					"ci":      {Packages: []string{"go"}},
@@ -95,7 +95,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "unknown after-hook target",
 			config: &config.Config{
-				Packages: map[string]string{},
+				Packages: []string{},
 				Tasks: map[string]config.Task{
 					"hook": {After: []string{"task:build"}},
 				},
@@ -106,7 +106,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "valid after-hook target",
 			config: &config.Config{
-				Packages: map[string]string{},
+				Packages: []string{},
 				Tasks: map[string]config.Task{
 					"build": {},
 					"hook":  {After: []string{"task:build"}},
@@ -118,7 +118,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "empty config",
 			config: &config.Config{
-				Packages:  map[string]string{},
+				Packages:  []string{},
 				Tasks:     map[string]config.Task{},
 				DevShells: map[string]config.Shell{},
 			},

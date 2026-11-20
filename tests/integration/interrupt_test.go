@@ -17,13 +17,13 @@ import (
 
 const signalTasksConfig = `{
   tasks = {
-    slow = lib.mkTask {
+    slow = tasksLib.mkTask {
       commands = [
         "sleep 60 & echo $! > \"$NIX_TASKS_TEST_LOG_DIR/child.pid\""
         "wait"
       ];
     };
-    after-slow = lib.mkTask {
+    after-slow = tasksLib.mkTask {
       depends = [ "task:slow" ];
       commands = [ "touch \"$NIX_TASKS_TEST_LOG_DIR/after-slow.ran\"" ];
     };
@@ -132,7 +132,7 @@ func TestRun_SecondSignalKillsImmediately(t *testing.T) {
 	skipIfNoNix(t)
 	binary := nixTasksBinary(t)
 	dir := writeTempFlake(t, `{
-  tasks.stubborn = lib.mkTask {
+  tasks.stubborn = tasksLib.mkTask {
     commands = [
       "trap '' TERM"
       "sleep 60 & echo $! > \"$NIX_TASKS_TEST_LOG_DIR/child.pid\""

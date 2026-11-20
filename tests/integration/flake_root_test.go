@@ -11,8 +11,8 @@ import (
 
 const locationTasksConfig = `{
   tasks = {
-    where = lib.mkTask { commands = [ "pwd -P" ]; };
-    where-sub = lib.mkTask { workingDir = "sub"; commands = [ "pwd -P" ]; };
+    where = tasksLib.mkTask { commands = [ "pwd -P" ]; };
+    where-sub = tasksLib.mkTask { workingDir = "sub"; commands = [ "pwd -P" ]; };
     artifact = {
       type = "build";
       derivation = pkgs.runCommand "flake-root-location" { } "echo ${builtins.readFile ./marker} > $out";

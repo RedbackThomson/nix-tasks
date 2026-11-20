@@ -15,7 +15,7 @@ func TestList_ReportsConfigDecodeError(t *testing.T) {
 	binary := nixTasksBinary(t)
 
 	dir := writeTempFlake(t, `{
-  tasks.web = lib.mkTask { commands = [ "true" ]; env = { PORT = 8080; }; };
+  tasks.web = tasksLib.mkTask { commands = [ "true" ]; env = { PORT = 8080; }; };
 }`, map[string]string{})
 
 	stdout, stderr, code := runNixTasksIn(t, binary, dir, "list", "-f", dir)

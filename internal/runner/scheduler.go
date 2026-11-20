@@ -211,7 +211,7 @@ func (e *Executor) runTask(ctx context.Context, name string, task config.Task) (
 	var fp *cache.Fingerprint
 	if e.cache != nil {
 		var fpErr error
-		fp, fpErr = cache.ComputeFingerprint(task, e.config.Packages, e.taskDir(task))
+		fp, fpErr = cache.ComputeFingerprint(task, e.taskDir(task))
 		if fpErr != nil {
 			slog.Debug("failed to compute fingerprint", "task", name, "error", fpErr)
 		}

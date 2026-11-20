@@ -183,7 +183,7 @@ func (e *Executor) runBuildTask(ctx context.Context, name string) error {
 	start := time.Now()
 	if err := cmd.Run(); err != nil {
 		if strings.Contains(stderr.String(), "does not provide attribute") {
-			return fmt.Errorf("nix build failed: %w (does the flake expose nixTasksBuilds? add `nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);` to its outputs)", err)
+			return fmt.Errorf("nix build failed: %w (does the flake expose nixTasksBuilds? generate its outputs with nix-tasks.lib.mkFlakeOutputs)", err)
 		}
 		return fmt.Errorf("nix build failed: %w", err)
 	}
