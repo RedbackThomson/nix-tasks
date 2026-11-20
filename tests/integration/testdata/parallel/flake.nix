@@ -22,22 +22,38 @@
             # Four independent tasks that can all run in parallel
             task-1 = lib.mkTask {
               description = "Independent task 1";
-              commands = [ "echo 'Task 1 starting' && sleep 0.1 && echo 'Task 1 done'" ];
+              commands = [
+                "echo \"task-1 start $(date +%s%3N)\" >> timings.log"
+                "sleep 1"
+                "echo \"task-1 end $(date +%s%3N)\" >> timings.log"
+              ];
             };
 
             task-2 = lib.mkTask {
               description = "Independent task 2";
-              commands = [ "echo 'Task 2 starting' && sleep 0.1 && echo 'Task 2 done'" ];
+              commands = [
+                "echo \"task-2 start $(date +%s%3N)\" >> timings.log"
+                "sleep 1"
+                "echo \"task-2 end $(date +%s%3N)\" >> timings.log"
+              ];
             };
 
             task-3 = lib.mkTask {
               description = "Independent task 3";
-              commands = [ "echo 'Task 3 starting' && sleep 0.1 && echo 'Task 3 done'" ];
+              commands = [
+                "echo \"task-3 start $(date +%s%3N)\" >> timings.log"
+                "sleep 1"
+                "echo \"task-3 end $(date +%s%3N)\" >> timings.log"
+              ];
             };
 
             task-4 = lib.mkTask {
               description = "Independent task 4";
-              commands = [ "echo 'Task 4 starting' && sleep 0.1 && echo 'Task 4 done'" ];
+              commands = [
+                "echo \"task-4 start $(date +%s%3N)\" >> timings.log"
+                "sleep 1"
+                "echo \"task-4 end $(date +%s%3N)\" >> timings.log"
+              ];
             };
 
             # Final task that depends on all four

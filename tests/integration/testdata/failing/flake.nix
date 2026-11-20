@@ -48,20 +48,20 @@
             after-fail = lib.mkTask {
               description = "Depends on fail";
               depends = [ "task:fail" ];
-              commands = [ "echo 'After fail'" ];
+              commands = [ "echo 'After fail'" "echo after-fail >> ran.log" ];
             };
 
             # Task that depends on the continue task
             after-continue = lib.mkTask {
               description = "Depends on fail-continue";
               depends = [ "task:fail-continue" ];
-              commands = [ "echo 'After continue'" ];
+              commands = [ "echo 'After continue'" "echo after-continue >> ran.log" ];
             };
 
             # Independent tasks for parallel failure testing
             independent-a = lib.mkTask {
               description = "Independent A";
-              commands = [ "echo 'Independent A'" ];
+              commands = [ "echo 'Independent A'" "echo independent-a >> ran.log" ];
             };
 
             independent-b = lib.mkTask {
@@ -71,13 +71,13 @@
 
             independent-c = lib.mkTask {
               description = "Independent C";
-              commands = [ "echo 'Independent C'" ];
+              commands = [ "echo 'Independent C'" "echo independent-c >> ran.log" ];
             };
 
             parallel-test = lib.mkTask {
               description = "Depends on independent tasks";
               depends = [ "task:independent-a" "task:independent-b" "task:independent-c" ];
-              commands = [ "echo 'All done'" ];
+              commands = [ "echo 'All done'" "echo parallel-test >> ran.log" ];
             };
           };
 

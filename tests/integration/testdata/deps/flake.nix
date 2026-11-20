@@ -22,43 +22,43 @@
             # Linear chain: a -> b -> c
             step-a = lib.mkTask {
               description = "First step";
-              commands = [ "echo 'Step A'" ];
+              commands = [ "echo 'Step A'" "echo step-a >> order.log" ];
             };
 
             step-b = lib.mkTask {
               description = "Second step";
               depends = [ "task:step-a" ];
-              commands = [ "echo 'Step B'" ];
+              commands = [ "echo 'Step B'" "echo step-b >> order.log" ];
             };
 
             step-c = lib.mkTask {
               description = "Third step";
               depends = [ "task:step-b" ];
-              commands = [ "echo 'Step C'" ];
+              commands = [ "echo 'Step C'" "echo step-c >> order.log" ];
             };
 
             # Diamond pattern: base -> left,right -> top
             base = lib.mkTask {
               description = "Base task";
-              commands = [ "echo 'Base'" ];
+              commands = [ "echo 'Base'" "echo base >> order.log" ];
             };
 
             left = lib.mkTask {
               description = "Left branch";
               depends = [ "task:base" ];
-              commands = [ "echo 'Left'" ];
+              commands = [ "echo 'Left'" "echo left >> order.log" ];
             };
 
             right = lib.mkTask {
               description = "Right branch";
               depends = [ "task:base" ];
-              commands = [ "echo 'Right'" ];
+              commands = [ "echo 'Right'" "echo right >> order.log" ];
             };
 
             top = lib.mkTask {
               description = "Top task (depends on left and right)";
               depends = [ "task:left" "task:right" ];
-              commands = [ "echo 'Top'" ];
+              commands = [ "echo 'Top'" "echo top >> order.log" ];
             };
 
             # Compound task
