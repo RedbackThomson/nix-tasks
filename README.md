@@ -251,6 +251,11 @@ $ nix run github:redbackthomson/nix-tasks -- validate
   Dev Shells: 1
 ```
 
+Loading the config already rejects unknown packages, tasks and shells.
+`validate` also checks the task graph for dependency cycles and that every
+build task resolves to a derivation (without building it), and lists every
+problem it finds before exiting non-zero.
+
 ## Usage
 
 ### Commands

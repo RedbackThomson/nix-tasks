@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -23,8 +24,13 @@ func Validate(cfg *Config) error {
 		packages[name] = true
 	}
 
-	// Check task deps reference valid packages
 	for taskName, task := range cfg.Tasks {
+		switch task.Type {
+		case "", TaskTypeShell, TaskTypeBuild:
+		default:
+			errs = append(errs, fmt.Sprintf("task '%s': unknown type '%s' (expected '%s' or '%s')", taskName, task.Type, TaskTypeShell, TaskTypeBuild))
+		}
+
 		for _, dep := range task.Deps {
 			if !packages[dep] {
 				errs = append(errs, fmt.Sprintf("task '%s': unknown package '%s'", taskName, dep))
@@ -65,6 +71,7 @@ func Validate(cfg *Config) error {
 	errs = append(errs, nameErrors(cfg)...)
 
 	if len(errs) > 0 {
+		slices.Sort(errs)
 		return &ValidationError{Errors: errs}
 	}
 
