@@ -8,7 +8,7 @@ let
 
   evalConfig = import ./eval.nix { inherit mkLib; };
 
-  outputAttrs = [ "nixTasksConfig" "nixTasksShells" "nixTasksShellDrvs" "nixTasksBuilds" "devShells" ];
+  outputAttrs = [ "nixTasksConfig" "nixTasksShellDrvs" "nixTasksBuilds" "devShells" ];
 
   mkFlakeOutputs = {
     nixpkgs,

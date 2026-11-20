@@ -136,8 +136,8 @@ let
     };
     testAssertionsGateEveryOutput = {
       expr = map (attr: fails (eval [ { tasks.t.depends = [ "missing" ]; } ]).${attr})
-        [ "nixTasksConfig" "nixTasksShells" "nixTasksShellDrvs" "nixTasksBuilds" "devShells" ];
-      expected = [ true true true true true ];
+        [ "nixTasksConfig" "nixTasksShellDrvs" "nixTasksBuilds" "devShells" ];
+      expected = [ true true true true ];
     };
     testValidConfigPasses = {
       expr = configFails [
@@ -317,7 +317,7 @@ let
       expr = builtins.attrNames (eval [
         { tasks.s.commands = [ "x" ]; }
         { tasks.b = { type = "build"; derivation = pkgs.hello; }; }
-      ]).nixTasksShells;
+      ]).nixTasksShellDrvs;
       expected = [ "s" ];
     };
     testMkFlakeOutputsShape = {
@@ -327,7 +327,7 @@ let
         modules = [ ];
       });
       expected = lib.genAttrs
-        [ "nixTasksConfig" "nixTasksShells" "nixTasksShellDrvs" "nixTasksBuilds" "devShells" ]
+        [ "nixTasksConfig" "nixTasksShellDrvs" "nixTasksBuilds" "devShells" ]
         (_: [ pkgs.stdenv.hostPlatform.system ]);
     };
   };
