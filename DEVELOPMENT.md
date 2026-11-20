@@ -89,7 +89,7 @@ import (
 )
 ```
 
-Only use external packages when necessary (Kong for CLI, Bubbletea for TUI, go-nix for Nix integration).
+Only use external packages when necessary: Kong for the CLI, Bubbletea and Lipgloss for the TUI, doublestar for `**` input globs, go-nix for store paths.
 
 ### Error Handling
 
@@ -124,11 +124,11 @@ slog.Error("task failed", "name", taskName, "error", err)
 Always pass context as the first parameter:
 
 ```go
-func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) error {
-    if ctx.Err() != nil {
-        return ctx.Err()
+func buildAttr(ctx context.Context, flake, attr string) error {
+    if err := ctx.Err(); err != nil {
+        return err
     }
-    // ...
+    return exec.CommandContext(ctx, "nix", "build", flake+"#"+attr).Run()
 }
 ```
 
@@ -163,17 +163,12 @@ func TestValidate(t *testing.T) {
 Define interfaces where they're used, not where they're implemented:
 
 ```go
-// In runner/executor.go
-type NixEvaluator interface {
+// In the package that calls it: only the methods it needs
+type evaluator interface {
     Eval(ctx context.Context, attr string, result any) error
 }
 
-// In nix/evaluator.go
-type Evaluator struct { /* ... */ }
-
-func (e *Evaluator) Eval(ctx context.Context, attr string, result any) error {
-    // implementation
-}
+// *nix.Evaluator (internal/nix/evaluator.go) satisfies it without referring to it.
 ```
 
 ## Project Structure

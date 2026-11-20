@@ -109,7 +109,6 @@ func (g *TaskGraph) ExecutionOrder(target string) ([]string, error) {
 		return nil, fmt.Errorf("task not found: %s", target)
 	}
 
-	// Phase 1: Collect execution set (deps + after-hooks, transitively)
 	inSet := make(map[string]bool)
 
 	var collectDeps func(name string)
@@ -140,7 +139,6 @@ func (g *TaskGraph) ExecutionOrder(target string) ([]string, error) {
 		}
 	}
 
-	// Phase 2: Topological sort over the execution set
 	visited := make(map[string]bool)
 	var order []string
 

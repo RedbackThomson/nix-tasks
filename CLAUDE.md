@@ -4,7 +4,6 @@ This document provides guidelines for Claude when implementing the nix-tasks pro
 
 ## Other Documents
 
-- Implementation Plan - `./docs/implementation-plan.md`
 - Requirements - `./docs/requirements.md`
 
 ## Project Summary
@@ -76,6 +75,8 @@ $ nix-tasks
 
 ### Example Configuration
 
+The attribute set passed to `lib.evalConfig`:
+
 ```nix
 {
   packages = {
@@ -86,7 +87,9 @@ $ nix-tasks
   tasks = {
     build = lib.mkGoTask {
       description = "Build the application";
-      output = "bin/app";
+      pname = "app";
+      src = ./.;
+      vendorHash = null;
     };
 
     test = lib.mkTask {
@@ -110,7 +113,6 @@ $ nix-tasks
 ## Key Documents
 
 - `docs/requirements.md` - Full system requirements and design decisions
-- `docs/implementation-plan.md` - Phased implementation plan with Go code examples
 
 ## Source Control: jj (Jujutsu)
 
@@ -168,17 +170,19 @@ import (
     "log/slog"      // Logging
     "errors"        // Error handling
     "testing"       // Testing
-    "net/http"      // HTTP
     "encoding/json" // JSON
     "context"       // Context
     "sync"          // Concurrency primitives
 )
 
-// Only use external packages when necessary
+// The external packages in use, each with no stdlib alternative
 import (
-    "github.com/alecthomas/kong"           // CLI (no good stdlib alternative)
-    tea "github.com/charmbracelet/bubbletea" // TUI (no stdlib alternative)
-    "github.com/nix-community/go-nix/pkg/storepath" // Nix-specific
+    "github.com/alecthomas/kong"                     // CLI
+    tea "github.com/charmbracelet/bubbletea"         // TUI
+    "github.com/charmbracelet/lipgloss"              // TUI styling
+    "github.com/charmbracelet/x/term"                // terminal size
+    "github.com/bmatcuk/doublestar/v4"               // ** globs for task inputs
+    "github.com/nix-community/go-nix/pkg/storepath"  // Nix store paths
 )
 ```
 
@@ -239,17 +243,15 @@ logger.Info("starting execution")
 Always pass context as the first parameter:
 
 ```go
-func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) error {
+func buildAttr(ctx context.Context, flake, attr string) error {
     // Check context cancellation
-    if ctx.Err() != nil {
-        return ctx.Err()
+    if err := ctx.Err(); err != nil {
+        return err
     }
 
-    // Pass context to subprocesses
-    cmd := exec.CommandContext(ctx, "nix", args...)
-
-    // Pass context to other functions
-    result, err := e.cache.Lookup(ctx, name, fingerprint)
+    // Pass context to subprocesses so cancellation stops them
+    cmd := exec.CommandContext(ctx, "nix", "build", flake+"#"+attr)
+    return cmd.Run()
 }
 ```
 
@@ -262,95 +264,49 @@ cmd/
     nix-tasks/
         main.go           # Entry point only - minimal code
 internal/
-    cli/                  # CLI command definitions (Kong)
-        cli.go            # Root CLI struct
-        run.go            # Each command in its own file
-        list.go
-    config/               # Configuration types and loading
-        config.go         # Type definitions
-        loader.go         # Loading logic
-        validate.go       # Validation logic
-    nix/                  # Nix integration
-        evaluator.go      # Main Nix wrapper
-        errors.go         # Nix-specific errors
-    runner/               # Task execution
-        executor.go       # Single task execution
-        graph.go          # Dependency graph
-        parallel.go       # Parallel execution
-    cache/                # Caching layer
-        store.go          # Cache storage
-        fingerprint.go    # Content hashing
-    ui/                   # Output formatting
-        printer.go        # Status printing
-        colors.go         # ANSI colors
-    tui/                  # Interactive TUI
-        app.go            # Bubbletea model
+    cli/                  # Kong commands, one file per command (run.go, list.go, ...)
+    config/               # Types (config.go), loading (loader.go), validation (validate.go)
+    nix/                  # nix CLI wrapper (evaluator.go) and its errors (errors.go)
+    runner/               # Dependency graph (graph.go) and task execution
+    cache/                # Fingerprints (fingerprint.go) and the on-disk store (store.go)
+    ui/                   # Colours, status printing and the progress display
+    tui/                  # Bubbletea app (app.go)
+lib/                      # Nix library: evalConfig, builders, shells, composition, Make compat
 ```
 
 ### Interface Design
 
-Define interfaces where they're used, not where they're implemented:
+Define interfaces where they're used, not where they're implemented. The
+consumer declares only the methods it calls:
 
 ```go
-// In runner/executor.go - defines what it needs
-type NixEvaluator interface {
+type evaluator interface {
     Eval(ctx context.Context, attr string, result any) error
-    DevelopCmd(ctx context.Context, shell string, cmd []string) *exec.Cmd
 }
 
-// In nix/evaluator.go - implements the interface
-type Evaluator struct {
-    flakePath string
-    debug     bool
-}
-
-// Satisfies NixEvaluator interface
-func (e *Evaluator) Eval(ctx context.Context, attr string, result any) error {
-    // implementation
+// *nix.Evaluator satisfies evaluator without referring to it.
+func loadTasks(ctx context.Context, eval evaluator) (map[string]config.Task, error) {
+    var tasks map[string]config.Task
+    err := eval.Eval(ctx, "nixTasksConfig."+nix.CurrentSystem()+".tasks", &tasks)
+    return tasks, err
 }
 ```
 
 ### Testing Patterns
 
-**Unit tests with mocks:**
+**Unit tests with fakes:** code that takes an interface can be tested without Nix.
 
 ```go
-// internal/runner/executor_test.go
-package runner_test
-
-import (
-    "context"
-    "testing"
-
-    "github.com/redbackthomson/nix-tasks/internal/runner"
-)
-
-// Mock for testing
-type mockEvaluator struct {
-    evalFunc func(ctx context.Context, attr string, result any) error
+type fakeEvaluator struct {
+    values map[string]string // attribute -> JSON
 }
 
-func (m *mockEvaluator) Eval(ctx context.Context, attr string, result any) error {
-    if m.evalFunc != nil {
-        return m.evalFunc(ctx, attr, result)
+func (f *fakeEvaluator) Eval(_ context.Context, attr string, result any) error {
+    v, ok := f.values[attr]
+    if !ok {
+        return fmt.Errorf("attribute %s not found", attr)
     }
-    return nil
-}
-
-func TestExecutor_RunTask(t *testing.T) {
-    mock := &mockEvaluator{
-        evalFunc: func(ctx context.Context, attr string, result any) error {
-            // Set up mock response
-            return nil
-        },
-    }
-
-    exec := runner.NewExecutor(mock, cfg, runner.ExecutorOptions{})
-    err := exec.RunTask(context.Background(), "build", task)
-
-    if err != nil {
-        t.Errorf("unexpected error: %v", err)
-    }
+    return json.Unmarshal([]byte(v), result)
 }
 ```
 
@@ -392,213 +348,149 @@ func TestValidate(t *testing.T) {
 }
 ```
 
-**Integration tests (require Nix):**
+**Integration tests (require Nix):** they live in `tests/integration`, carry
+the `integration` build tag, run the `nix-tasks` binary against the flakes in
+`tests/integration/testdata`, and skip when `nix` is not on `PATH`.
 
 ```go
 //go:build integration
 
 package integration_test
-
-import (
-    "context"
-    "os/exec"
-    "testing"
-)
-
-func TestNixTasksRun(t *testing.T) {
-    // Skip if nix not available
-    if _, err := exec.LookPath("nix"); err != nil {
-        t.Skip("nix not available")
-    }
-
-    // Run actual nix-tasks command
-    cmd := exec.Command("nix-tasks", "run", "build")
-    cmd.Dir = "testdata/simple-project"
-
-    output, err := cmd.CombinedOutput()
-    if err != nil {
-        t.Fatalf("nix-tasks run failed: %v\n%s", err, output)
-    }
-}
 ```
 
 ### Concurrency Patterns
 
-**Goroutines with WaitGroup:**
+**Goroutines with a semaphore and WaitGroup:**
 
 ```go
-func (p *ParallelExecutor) executeGroup(ctx context.Context, tasks []string) []TaskResult {
-    results := make([]TaskResult, len(tasks))
-    sem := make(chan struct{}, p.maxJobs)
+func runAll(ctx context.Context, items []string, jobs int, work func(context.Context, string) error) []error {
+    errs := make([]error, len(items))
+    sem := make(chan struct{}, jobs)
     var wg sync.WaitGroup
 
-    for i, name := range tasks {
+    for i, item := range items {
         wg.Add(1)
-        go func(idx int, taskName string) {
+        go func() {
             defer wg.Done()
 
-            // Acquire semaphore
             sem <- struct{}{}
             defer func() { <-sem }()
 
-            // Check cancellation
-            if ctx.Err() != nil {
-                results[idx] = TaskResult{Name: taskName, Error: ctx.Err()}
+            if err := ctx.Err(); err != nil {
+                errs[i] = err
                 return
             }
-
-            // Execute
-            err := p.executor.RunTask(ctx, taskName)
-            results[idx] = TaskResult{Name: taskName, Success: err == nil, Error: err}
-        }(i, name)
+            errs[i] = work(ctx, item)
+        }()
     }
 
     wg.Wait()
-    return results
+    return errs
 }
 ```
 
 **Mutex for shared state:**
 
 ```go
-type OutputManager struct {
-    mu      sync.Mutex
-    buffers map[string]*bytes.Buffer
+type counter struct {
+    mu     sync.Mutex
+    counts map[string]int
 }
 
-func (m *OutputManager) Writer(taskName string) io.Writer {
-    m.mu.Lock()
-    defer m.mu.Unlock()
-
-    buf := &bytes.Buffer{}
-    m.buffers[taskName] = buf
-    return buf
+func (c *counter) add(name string) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    c.counts[name]++
 }
 ```
 
 ### CLI Patterns (Kong)
 
-**Command structure:**
+**Command structure** (`internal/cli/cli.go`):
 
 ```go
-// Root CLI with global flags
-type CLI struct {
-    Globals
-
-    Run      RunCmd      `cmd:"" help:"Run a task"`
-    List     ListCmd     `cmd:"" help:"List available tasks"`
-    Shell    ShellCmd    `cmd:"" help:"Enter a development shell"`
-    Cache    CacheCmd    `cmd:"" help:"Cache management commands"`
-}
-
+// Globals contains flags available to all commands
 type Globals struct {
-    Verbose bool   `short:"v" help:"Show task output"`
-    Debug   bool   `help:"Show debug information"`
-    Flake   string `short:"f" help:"Path to flake" default:"."`
+	Verbose bool   `short:"v" help:"Show task output"`
+	Debug   bool   `help:"Show debug information including Nix commands"`
+	Flake   string `short:"f" help:"Path to flake" default:"."`
 }
 
-// Command with arguments and flags
+// CLI is the root command structure
+type CLI struct {
+	Globals
+
+	Run         RunCmd         `cmd:"" help:"Run a task"`
+	List        ListCmd        `cmd:"" help:"List available tasks and shells"`
+	Describe    DescribeCmd    `cmd:"" help:"Show task details"`
+	Graph       GraphCmd       `cmd:"" help:"Show execution graph for a task"`
+	Shell       ShellCmd       `cmd:"" help:"Enter a development shell"`
+	Cache       CacheCmd       `cmd:"" help:"Cache management commands"`
+	Validate    ValidateCmd    `cmd:"" help:"Validate configuration"`
+	TUI         TUICmd         `cmd:"" default:"withargs" help:"Launch interactive TUI (default)"`
+	Completions CompletionsCmd `cmd:"" help:"Generate shell completions"`
+}
+```
+
+**Command with arguments and flags** (abridged from `internal/cli/run.go`):
+
+```go
 type RunCmd struct {
-    Task            string `arg:"" help:"Task name to run"`
-    Jobs            int    `short:"j" help:"Parallel jobs" default:"4"`
-    Force           bool   `help:"Bypass cache"`
-    ContinueOnError bool   `help:"Continue on task failure"`
+	Task            string `arg:"" help:"Task name to run"`
+	Jobs            int    `short:"j" help:"Number of parallel jobs" default:"4"`
+	ContinueOnError bool   `help:"Continue running independent tasks on failure"`
 }
 
 func (c *RunCmd) Run(globals *Globals) error {
-    // Implementation
+	// Implementation
 }
 ```
 
 ### Output Formatting
 
-**Colors (no icons):**
+**Colors (no icons):** `internal/ui/colors.go` wraps strings in ANSI colours
+with `Green`, `Red`, `Yellow`, `Blue` and `Gray`:
 
 ```go
-const (
-    colorReset = "\033[0m"
-    colorRed   = "\033[31m"
-    colorGreen = "\033[32m"
-)
-
-func Green(s string) string {
-    return fmt.Sprintf("%s%s%s", colorGreen, s, colorReset)
-}
-
-func Red(s string) string {
-    return fmt.Sprintf("%s%s%s", colorRed, s, colorReset)
-}
-
-// Usage
-fmt.Printf("%s %s\n", Green("✓"), taskName)  // Success
-fmt.Printf("%s %s\n", Red("✗"), taskName)    // Failure
+fmt.Printf("%s %s\n", ui.Green("✓"), taskName)  // Success
+fmt.Printf("%s %s\n", ui.Red("✗"), taskName)    // Failure
 ```
 
-**Detect terminal vs CI:**
-
-```go
-func isCI() bool {
-    return os.Getenv("CI") != ""
-}
-
-func isTerminal() bool {
-    fileInfo, _ := os.Stdout.Stat()
-    return (fileInfo.Mode() & os.ModeCharDevice) != 0
-}
-```
+**Terminal vs CI:** `runner.DetectOutputMode` streams prefixed output when `CI`
+is set, shows the live progress display when stdout is a terminal, and
+otherwise buffers each task's output and prints it only on failure.
 
 ## Nix Integration Patterns
 
 ### Subprocess Wrapper
 
-```go
-type Evaluator struct {
-    flakePath string
-    debug     bool
-}
+`internal/nix/evaluator.go` runs the `nix` CLI as a subprocess. `Eval` runs
+`nix eval --json <flake>#<attr>`, logs the command with `slog.Debug`, and
+returns an `*EvalError` carrying the attribute and nix's stderr on failure
+(simplified):
 
+```go
 func (e *Evaluator) Eval(ctx context.Context, attr string, result any) error {
-    expr := fmt.Sprintf("%s#%s", e.flakePath, attr)
-    args := []string{"eval", "--json", expr}
+	expr := fmt.Sprintf("%s#%s", e.flakePath, attr)
+	cmd := exec.CommandContext(ctx, "nix", "eval", "--json", expr)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
-    if e.debug {
-        slog.Debug("nix eval", "expr", expr)
-    }
-
-    cmd := exec.CommandContext(ctx, "nix", args...)
-    var stdout, stderr bytes.Buffer
-    cmd.Stdout = &stdout
-    cmd.Stderr = &stderr
-
-    if err := cmd.Run(); err != nil {
-        return &EvalError{
-            Attribute: attr,
-            Stderr:    stderr.String(),
-            Err:       err,
-        }
-    }
-
-    return json.Unmarshal(stdout.Bytes(), result)
+	if err := cmd.Run(); err != nil {
+		return &EvalError{Attribute: attr, Stderr: stderr.String(), Err: err}
+	}
+	return json.Unmarshal(stdout.Bytes(), result)
 }
 ```
 
-### Running Commands in Nix Develop
+### Running Task Commands
 
-```go
-func (e *Evaluator) DevelopCmd(ctx context.Context, shell string, command []string) *exec.Cmd {
-    expr := fmt.Sprintf("%s#%s", e.flakePath, shell)
-    args := []string{"develop", expr, "--command"}
-    args = append(args, command...)
-
-    return exec.CommandContext(ctx, "nix", args...)
-}
-
-// Usage
-cmd := eval.DevelopCmd(ctx, "nixTasksShells.build", []string{"bash", "-e", "-c", script})
-cmd.Stdout = os.Stdout
-cmd.Stderr = os.Stderr
-err := cmd.Run()
-```
+Shell tasks run their script inside the task's shell:
+`Evaluator.DevelopCmd` builds `nix develop <flake>#nixTasksShells.<system>.<task>
+--command bash -e -c <script>`, where the script is the task's `script` or its
+`commands` joined by newlines. Build tasks run `nix build` on the derivation
+and link its outputs under `.nix-tasks/<task>/`.
 
 ## Code Style
 
