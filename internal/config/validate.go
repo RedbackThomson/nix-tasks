@@ -59,6 +59,8 @@ func Validate(cfg *Config) error {
 		}
 	}
 
+	errs = append(errs, nameErrors(cfg)...)
+
 	if len(errs) > 0 {
 		return &ValidationError{Errors: errs}
 	}

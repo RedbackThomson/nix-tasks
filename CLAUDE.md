@@ -487,9 +487,13 @@ func (e *Evaluator) Eval(ctx context.Context, attr string, result any) error {
 ### Running Task Commands
 
 Shell tasks run their script inside the task's shell:
-`Evaluator.DevelopCmd` builds `nix develop <flake>#nixTasksShells.<system>.<task>
+`Evaluator.DevelopCmd` builds `nix develop <flake>#nixTasksShells."<system>"."<task>"
 --command bash -e -c <script>`, where the script is the task's `script` or its
-`commands` joined by newlines. Build tasks run `nix build` on the derivation
+`commands` joined by newlines.
+
+Build flake attribute paths with the helpers in `internal/nix/attrs.go`
+(`AttrPath`, `NixTasksShellsAttr`, `DevShellAttr`), which quote each name so a
+task such as `lint.go` stays one attribute. Build tasks run `nix build` on the derivation
 and link its outputs under `.nix-tasks/<task>/`.
 
 ## Code Style

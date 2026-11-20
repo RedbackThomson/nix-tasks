@@ -101,7 +101,7 @@ func (e *Executor) runShellTask(ctx context.Context, name string, task config.Ta
 
 	// Run inside nix develop with the task's shell
 	system := nix.CurrentSystem()
-	shellAttr := fmt.Sprintf("nixTasksShells.%s.%s", system, name)
+	shellAttr := nix.NixTasksShellsAttr(system, name)
 	cmd := e.nix.DevelopCmd(ctx, shellAttr, []string{"bash", "-e", "-c", script})
 
 	// Configure output

@@ -41,7 +41,7 @@ func (c *ShellCmd) Run(globals *Globals) error {
 
 	// Build the shell attribute
 	system := nix.CurrentSystem()
-	shellAttr := fmt.Sprintf("devShells.%s.%s", system, shellName)
+	shellAttr := nix.DevShellAttr(system, shellName)
 
 	if c.Command != "" {
 		// Run a single command in the shell
