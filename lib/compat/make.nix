@@ -105,32 +105,4 @@ rec {
         inherit target makefile makeFlags deps env;
       };
     }) targets);
-
-  # Generate a migration task that runs both Make and nix-tasks versions
-  # for comparison during migration.
-  #
-  # Arguments:
-  #   makeTarget  - The Make target to run
-  #   taskName    - The nix-tasks task to compare with
-  #   description - Task description
-  #
-  # Returns a task that runs both and compares outputs
-  mkMigrationTask = {
-    makeTarget,
-    taskName,
-    description ? "Compare Make ${makeTarget} with nix-tasks ${taskName}",
-    ...
-  }@args:
-    builders.mkTask ({
-      inherit description;
-      deps = [ "gnumake" ];
-      depends = [ "task:${taskName}" ];
-      commands = [
-        "echo 'Migration comparison: make ${makeTarget} vs nix-tasks ${taskName}'"
-        "echo 'Make version:'"
-        "make ${makeTarget} 2>&1 || true"
-        "echo ''"
-        "echo 'nix-tasks version completed via dependency'"
-      ];
-    } // (builtins.removeAttrs args ["makeTarget" "taskName" "description"]));
 }
