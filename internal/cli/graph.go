@@ -12,7 +12,7 @@ import (
 
 // GraphCmd shows the execution graph for a task
 type GraphCmd struct {
-	Task string `arg:"" help:"Task name to show execution graph for"`
+	Task string `arg:"" completion-predictor:"task" help:"Task name to show execution graph for"`
 }
 
 // Run executes the graph command

@@ -19,7 +19,7 @@ import (
 
 // RunCmd runs a task
 type RunCmd struct {
-	Task            string `arg:"" help:"Task name to run"`
+	Task            string `arg:"" completion-predictor:"task" help:"Task name to run"`
 	Jobs            *int   `short:"j" help:"Number of tasks to run at once (default: $NIX_TASKS_JOBS, or else the number of CPUs available)"`
 	ContinueOnError bool   `help:"Continue running independent tasks on failure"`
 	Force           bool   `help:"Force re-run tasks even if cached"`
