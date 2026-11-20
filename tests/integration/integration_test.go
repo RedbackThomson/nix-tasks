@@ -81,7 +81,9 @@ func runNixTasksInDir(t *testing.T, binary, workDir, cacheDir string, args ...st
 
 	cmd := exec.CommandContext(ctx, binary, args...)
 	cmd.Dir = workDir
-	cmd.Env = append(cmd.Environ(), "NIX_TASKS_CACHE_DIR="+cacheDir)
+	// Tasks run in the flake root, which is shared testdata, so fixtures
+	// write their logs to the per-test workDir named here instead.
+	cmd.Env = append(cmd.Environ(), "NIX_TASKS_CACHE_DIR="+cacheDir, "NIX_TASKS_TEST_LOG_DIR="+workDir)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -1073,7 +1075,8 @@ func TestMkGoTask_BuildsGoApplication(t *testing.T) {
 
 	assertStatuses(t, stdout, map[string]string{"build": "passed"})
 
-	link := filepath.Join(workDir, ".nix-tasks", "build", "out")
+	// Outputs are linked in the flake root, not the directory nix-tasks ran in.
+	link := filepath.Join(flakePath, ".nix-tasks", "build", "out")
 	target, err := os.Readlink(link)
 	if err != nil {
 		t.Fatalf("expected output link at %s: %v", link, err)

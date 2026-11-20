@@ -22,43 +22,43 @@
             # Linear chain: a -> b -> c
             step-a = lib.mkTask {
               description = "First step";
-              commands = [ "echo 'Step A'" "echo step-a >> order.log" ];
+              commands = [ "echo 'Step A'" "echo step-a >> \"$NIX_TASKS_TEST_LOG_DIR/order.log\"" ];
             };
 
             step-b = lib.mkTask {
               description = "Second step";
               depends = [ "task:step-a" ];
-              commands = [ "echo 'Step B'" "echo step-b >> order.log" ];
+              commands = [ "echo 'Step B'" "echo step-b >> \"$NIX_TASKS_TEST_LOG_DIR/order.log\"" ];
             };
 
             step-c = lib.mkTask {
               description = "Third step";
               depends = [ "task:step-b" ];
-              commands = [ "echo 'Step C'" "echo step-c >> order.log" ];
+              commands = [ "echo 'Step C'" "echo step-c >> \"$NIX_TASKS_TEST_LOG_DIR/order.log\"" ];
             };
 
             # Diamond pattern: base -> left,right -> top
             base = lib.mkTask {
               description = "Base task";
-              commands = [ "echo 'Base'" "echo base >> order.log" ];
+              commands = [ "echo 'Base'" "echo base >> \"$NIX_TASKS_TEST_LOG_DIR/order.log\"" ];
             };
 
             left = lib.mkTask {
               description = "Left branch";
               depends = [ "task:base" ];
-              commands = [ "echo 'Left'" "echo left >> order.log" ];
+              commands = [ "echo 'Left'" "echo left >> \"$NIX_TASKS_TEST_LOG_DIR/order.log\"" ];
             };
 
             right = lib.mkTask {
               description = "Right branch";
               depends = [ "task:base" ];
-              commands = [ "echo 'Right'" "echo right >> order.log" ];
+              commands = [ "echo 'Right'" "echo right >> \"$NIX_TASKS_TEST_LOG_DIR/order.log\"" ];
             };
 
             top = lib.mkTask {
               description = "Top task (depends on left and right)";
               depends = [ "task:left" "task:right" ];
-              commands = [ "echo 'Top'" "echo top >> order.log" ];
+              commands = [ "echo 'Top'" "echo top >> \"$NIX_TASKS_TEST_LOG_DIR/order.log\"" ];
             };
 
             # Compound task

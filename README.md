@@ -325,6 +325,15 @@ $ nix-tasks run build --no-cache
 $ nix-tasks run build --stream
 ```
 
+Tasks run in the flake's root directory, so `nix-tasks run` behaves the same
+from any subdirectory. The root is the directory `nix` itself evaluates: the
+nearest directory containing `flake.nix`, searching up from the current
+directory (or `-f`) but not past a git repository root (a directory containing
+`.git`) or onto another filesystem. A task's `workingDir` and the `.nix-tasks/` output links
+are relative to that root. `-f` accepts a relative path such as
+`-f examples/demo`; non-path references like `github:owner/repo` are passed to
+`nix` unchanged.
+
 If exactly one task fails because its command exited non-zero, `nix-tasks run`
 exits with that command's exit code (also with `--raw`); any other failure
 exits 1.
