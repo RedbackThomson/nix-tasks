@@ -21,11 +21,9 @@ type DescribeCmd struct {
 func (c *DescribeCmd) Run(globals *Globals) error {
 	ctx := context.Background()
 
-	eval := nix.NewEvaluator(globals.Flake)
-
-	cfg, err := config.Load(ctx, eval)
+	cfg, _, err := loadConfig(ctx, globals)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
 	}
 
 	task, ok := cfg.Tasks[c.Task]

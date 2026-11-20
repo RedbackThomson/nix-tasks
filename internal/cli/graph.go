@@ -6,8 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/redbackthomson/nix-tasks/internal/config"
-	"github.com/redbackthomson/nix-tasks/internal/nix"
 	"github.com/redbackthomson/nix-tasks/internal/runner"
 	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
@@ -21,11 +19,9 @@ type GraphCmd struct {
 func (c *GraphCmd) Run(globals *Globals) error {
 	ctx := context.Background()
 
-	eval := nix.NewEvaluator(globals.Flake)
-
-	cfg, err := config.Load(ctx, eval)
+	cfg, _, err := loadConfig(ctx, globals)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
 	}
 
 	if _, ok := cfg.Tasks[c.Task]; !ok {
