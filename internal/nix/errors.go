@@ -1,6 +1,10 @@
 package nix
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
 
 // EvalError represents a Nix evaluation error
 type EvalError struct {
@@ -30,4 +34,12 @@ func (e *BuildError) Error() string {
 
 func (e *BuildError) Unwrap() error {
 	return e.Err
+}
+
+// IsMissingAttribute reports whether err is an evaluation failure caused by
+// the flake not providing the requested attribute at all, as opposed to an
+// error while evaluating it.
+func IsMissingAttribute(err error) bool {
+	var evalErr *EvalError
+	return errors.As(err, &evalErr) && strings.Contains(evalErr.Stderr, "does not provide attribute")
 }
