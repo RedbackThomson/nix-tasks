@@ -381,7 +381,9 @@ debug level on every miss, so `--debug` users get it without the flag.
 
 - Progress display and tree output keep the existing `✓ name (cached)` line and
   add the saved time from `runDuration`: `✓ generate (cached, 41s saved)`.
-- The summary gains a count: `Completed: 5 tasks (3 passed, 2 cached)`.
+- The end-of-run dependency tree shows hits the same way
+  (`generate ✓ (cached, 41s saved)`), and the summary counts them with the
+  total time saved: `Completed: 5 tasks (3 passed, 2 cached (53s saved))`.
 - `describe` gains a `Cache:` section listing inputs, outputs, env and the
   effective max entries (plus the always-runs warning when it applies), or
   `Cache: disabled`. It does not hash anything; current hit/miss status is

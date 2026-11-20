@@ -9,7 +9,9 @@ import (
 
 // RawReporter connects the target task straight to stdout and stderr and
 // prints nothing else, except that when a dependency fails the summary goes to
-// stderr, since otherwise nothing would say why the target never ran.
+// stderr, since otherwise nothing would say why the target never ran, and a
+// target answered from the cache says so on stderr rather than printing
+// nothing.
 type RawReporter struct {
 	target         string
 	stdout, stderr io.Writer
@@ -40,6 +42,9 @@ func (r *RawReporter) TaskFinished(res runner.TaskResult) {
 	r.mu.Lock()
 	for _, w := range res.Warnings {
 		_, _ = io.WriteString(r.stderr, formatWarning(res.Name, w)+"\n")
+	}
+	if res.Name == r.target && res.Cached {
+		_, _ = io.WriteString(r.stderr, res.Name+": cached\n")
 	}
 	r.mu.Unlock()
 	if res.Name == r.target || !failed(res) {

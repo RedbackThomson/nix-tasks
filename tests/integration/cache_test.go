@@ -349,6 +349,40 @@ func TestCache_BuildUpstreamKeyedByDerivation(t *testing.T) {
 	f.assertRuns("use-tool", 2)
 }
 
+func TestCache_ReportsHitsAndSavedTime(t *testing.T) {
+	f := newCacheFlake(t)
+	f.mustRun("package")
+	out := f.mustRun("package")
+	if !strings.Contains(out, "generate ✓ (cached, ") || !strings.Contains(out, "Completed: 2 tasks (2 cached (") {
+		t.Errorf("hits should show the saved time and count:\n%s", out)
+	}
+
+	stdout, stderr, err := f.run("run", "generate", "--raw")
+	if err != nil || stdout != "" || !strings.Contains(stderr, "generate: cached") {
+		t.Errorf("--raw hit: %v\nstdout: %q\nstderr: %q", err, stdout, stderr)
+	}
+}
+
+func TestCache_JSONOutput(t *testing.T) {
+	f := newCacheFlake(t)
+	first := runJSON(t, f.dir, f.cacheDir, "run", "package", "-f", f.dir)
+	first.assertCode(t, 0)
+	if gen := first.task(t, "generate"); gen.SavedMs != nil || gen.Cache == nil || !gen.Cache.Enabled || gen.Cache.Hit ||
+		gen.Cache.Reason == nil || *gen.Cache.Reason != "no previous entry" {
+		t.Errorf("first run: %+v %+v", gen, gen.Cache)
+	}
+	second := runJSON(t, f.dir, f.cacheDir, "run", "package", "-f", f.dir)
+	if gen := second.task(t, "generate"); !gen.Cached || gen.SavedMs == nil || gen.Cache == nil || !gen.Cache.Hit || gen.Cache.Reason != nil {
+		t.Errorf("second run should hit with the saved time: %+v %+v", gen, gen.Cache)
+	}
+	if second.Doc.Counts.Cached != 2 {
+		t.Errorf("counts %+v", second.Doc.Counts)
+	}
+	if tools := runJSON(t, f.dir, f.cacheDir, "run", "tools", "-f", f.dir).task(t, "tools"); tools.Cache != nil || tools.SavedMs != nil {
+		t.Errorf("a task without a cache declaration: %+v", tools)
+	}
+}
+
 // A cached task must re-run when one of its packages changes, even though the
 // config only carries package names.
 func TestRun_CacheInvalidatedByPackageChange(t *testing.T) {

@@ -72,6 +72,8 @@ func FormatResult(r runner.TaskResult) string {
 func resultDetail(r runner.TaskResult) string {
 	var detail string
 	switch {
+	case r.Cached && r.Saved > 0:
+		detail += " " + Muted("(cached, "+ShortDuration(r.Saved)+" saved)")
 	case r.Cached:
 		detail += " " + Muted("(cached)")
 	case r.State != runner.Skipped:

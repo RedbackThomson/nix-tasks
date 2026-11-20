@@ -61,6 +61,8 @@ add up to the number of tasks.
 | `state` | string | `succeeded`, `failed`, `failed_allowed` (failed with `continueOnError`), `skipped` or `interrupted` |
 | `cached` | bool | The result came from the cache; the task did not run |
 | `afterHook` | bool | The task is in the run because it runs `after` another task in the run. `false` for the targets and everything they depend on, including a task that is both a dependency and an after-hook, since it would have run anyway; also `false` for the tasks a hook depends on, which are dependencies |
+| `savedMs` | number or null | For a cache hit, how long the run that stored the entry took; otherwise `null` |
+| `cache` | object or null | What the [task cache](./cache-redesign.md) did; `null` for a task without a `cache` declaration. See below |
 | `exitCode` | number or null | `0` for a task that ran and succeeded; the process exit code of a failure; otherwise `null` (cached, skipped, interrupted, or a failure that was not a process exit, such as a shell that failed to evaluate) |
 | `error` | string or null | The error of a failed or interrupted task |
 | `skipReason` | string or null | Why a skipped task never started, e.g. `"lint failed"` or `"run stopped"` |
@@ -68,6 +70,14 @@ add up to the number of tasks.
 | `finishedAt` | timestamp or null | When it finished; `null` when skipped |
 | `durationMs` | number or null | How long it took; `null` when skipped |
 | `log` | string or null | Path of its log; `null` when it did not run (cached or skipped) or its log could not be created |
+
+`cache` has three fields:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `enabled` | bool | The cache was consulted for this task (looked up, or skipped by `--force`) |
+| `hit` | bool | Same as the task's `cached` |
+| `reason` | string or null | Why the task ran instead of hitting, e.g. `"no previous entry"`, `"inputs changed: 1 modified"`, `"depends on uncached tools"`, `"--force"` or `"cache disabled"` (`--no-cache`, or a flake that is not a local path); `null` on a hit and for a task that never started |
 
 Tasks are listed with every task after the tasks it depends on (including
 the task an `after` hook follows), ties broken by name, so the same pipeline

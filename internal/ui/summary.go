@@ -6,6 +6,7 @@ import (
 	"io"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/runner"
 )
@@ -49,14 +50,16 @@ func writeSummary(w io.Writer, graph *runner.TaskGraph, targets []string, result
 }
 
 // completedLine totals the run, counting cache hits apart from tasks that
-// ran and passed.
+// ran and passed, with the time the hits saved.
 func completedLine(results []runner.TaskResult) string {
 	var passed, cached int
+	var saved time.Duration
 	counts := map[runner.TaskState]int{}
 	for _, r := range results {
 		switch {
 		case r.Cached:
 			cached++
+			saved += r.Saved
 		case r.State == runner.Succeeded:
 			passed++
 		default:
@@ -67,7 +70,10 @@ func completedLine(results []runner.TaskResult) string {
 	if passed > 0 {
 		parts = append(parts, fmt.Sprintf("%d passed", passed))
 	}
-	if cached > 0 {
+	switch {
+	case cached > 0 && saved > 0:
+		parts = append(parts, fmt.Sprintf("%d cached (%s saved)", cached, ShortDuration(saved)))
+	case cached > 0:
 		parts = append(parts, fmt.Sprintf("%d cached", cached))
 	}
 	if n := counts[runner.Failed]; n > 0 {

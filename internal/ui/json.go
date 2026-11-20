@@ -53,14 +53,26 @@ type JSONTask struct {
 	// AfterHook is set when the task is in the run because it is an
 	// after-hook of another task in it; a task the targets also depend on,
 	// and a dependency of a hook, is not.
-	AfterHook  bool      `json:"afterHook"`
-	ExitCode   *int      `json:"exitCode"`
-	Error      *string   `json:"error"`
-	SkipReason *string   `json:"skipReason"`
-	StartedAt  *JSONTime `json:"startedAt"`
-	FinishedAt *JSONTime `json:"finishedAt"`
-	DurationMs *int64    `json:"durationMs"`
-	Log        *string   `json:"log"`
+	AfterHook  bool       `json:"afterHook"`
+	SavedMs    *int64     `json:"savedMs"`
+	Cache      *JSONCache `json:"cache"`
+	ExitCode   *int       `json:"exitCode"`
+	Error      *string    `json:"error"`
+	SkipReason *string    `json:"skipReason"`
+	StartedAt  *JSONTime  `json:"startedAt"`
+	FinishedAt *JSONTime  `json:"finishedAt"`
+	DurationMs *int64     `json:"durationMs"`
+	Log        *string    `json:"log"`
+}
+
+// JSONCache is what the task cache did for a task that declares one.
+type JSONCache struct {
+	// Enabled is set when the cache was consulted for the task.
+	Enabled bool `json:"enabled"`
+	Hit     bool `json:"hit"`
+	// Reason says why the task ran instead of hitting; nil on a hit and for
+	// tasks that never started.
+	Reason *string `json:"reason"`
 }
 
 // JSONTime is an RFC 3339 UTC timestamp with exactly three fractional
@@ -151,6 +163,9 @@ func (r *JSONReporter) Summary(graph *runner.TaskGraph, targets []string, result
 	for _, name := range order {
 		t := jsonTask(byName[name], labelOf(r.plan.Labels, name))
 		t.AfterHook = !needed[name] && hooksInto(graph, name, byName)
+		if task, ok := graph.Task(name); ok && task.Cache != nil {
+			t.Cache = jsonCache(byName[name])
+		}
 		r.tasks = append(r.tasks, t)
 	}
 }
@@ -248,6 +263,9 @@ func jsonTask(res runner.TaskResult, label string) JSONTask {
 		State:  jsonStates[res.State],
 		Cached: res.Cached,
 	}
+	if res.Cached {
+		t.SavedMs = ptr(res.Saved.Milliseconds())
+	}
 	if res.State != runner.Skipped {
 		t.StartedAt = ptr(JSONTime(res.Start))
 		t.FinishedAt = ptr(JSONTime(res.Start.Add(res.Duration)))
@@ -273,6 +291,27 @@ func jsonTask(res runner.TaskResult, label string) JSONTask {
 		t.Log = ptr(res.Log)
 	}
 	return t
+}
+
+func jsonCache(res runner.TaskResult) *JSONCache {
+	c := &JSONCache{Hit: res.Cached}
+	switch o := res.Cache; {
+	case o == nil:
+		if res.State != runner.Skipped {
+			c.Reason = ptr("cache disabled")
+		}
+	case res.Cached:
+		c.Enabled = true
+	case o.Uncached != "":
+		c.Reason = ptr(o.Uncached)
+	case o.Forced:
+		c.Enabled, c.Reason = true, ptr("--force")
+	case o.Miss != nil:
+		c.Enabled, c.Reason = true, ptr(o.Miss.Reason())
+	default:
+		c.Enabled = true
+	}
+	return c
 }
 
 func ptr[T any](v T) *T { return &v }

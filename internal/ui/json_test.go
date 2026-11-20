@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redbackthomson/nix-tasks/internal/cache"
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/runner"
 )
@@ -29,8 +30,8 @@ func taskExit(t *testing.T, name string, code int) error {
 func jsonScenario(t *testing.T) (*runner.TaskGraph, runner.RunPlan, []runner.TaskResult) {
 	t.Helper()
 	tasks := map[string]config.Task{
-		"gen":   {},
-		"build": {Depends: []string{"gen"}},
+		"gen":   {Cache: &config.TaskCache{Inputs: []string{"apis/**"}, Outputs: []string{}}},
+		"build": {Depends: []string{"gen"}, Cache: &config.TaskCache{Inputs: []string{"*.go"}, Outputs: []string{"bin/app"}}},
 		// Both a dependency of deploy and a hook of build, so it is not
 		// reported as a hook: it would have run anyway.
 		"lint":   {ContinueOnError: true, After: []string{"build"}},
@@ -47,9 +48,10 @@ func jsonScenario(t *testing.T) (*runner.TaskGraph, runner.RunPlan, []runner.Tas
 	start := time.Date(2026, 11, 20, 9, 15, 2, 0, time.UTC)
 	at := func(ms int) time.Time { return start.Add(time.Duration(ms) * time.Millisecond) }
 	results := []runner.TaskResult{
-		{Name: "gen", State: runner.Succeeded, Cached: true, Start: at(100), Duration: time.Millisecond},
+		{Name: "gen", State: runner.Succeeded, Cached: true, Saved: 12400 * time.Millisecond, Cache: &runner.CacheOutcome{}, Start: at(100), Duration: time.Millisecond},
 		{Name: "lint", State: runner.FailedAllowed, Error: taskExit(t, "lint", 1), Start: at(100), Duration: 400 * time.Millisecond, Log: "/runs/r/lint.log"},
-		{Name: "build", State: runner.Succeeded, Start: at(101), Duration: 2300 * time.Millisecond, Log: "/runs/r/build.log"},
+		{Name: "build", State: runner.Succeeded, Start: at(101), Duration: 2300 * time.Millisecond, Log: "/runs/r/build.log",
+			Cache: &runner.CacheOutcome{Stored: true, Miss: &cache.Explanation{Inputs: cache.FileChanges{Modified: []string{"main.go"}}}}},
 		{Name: "setup", State: runner.Succeeded, Start: at(2401), Duration: 10 * time.Millisecond, Log: "/runs/r/setup.log"},
 		{Name: "notify", State: runner.Succeeded, Start: at(2411), Duration: 50 * time.Millisecond, Log: "/runs/r/notify.log"},
 		{Name: "test", State: runner.Failed, Error: taskExit(t, "test", 2), Start: at(2401), Duration: 4100 * time.Millisecond, Log: "/runs/r/test.log"},
@@ -126,8 +128,8 @@ func TestJSONReporter_EveryTaskFieldPresent(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
 		t.Fatal(err)
 	}
-	fields := []string{"name", "label", "state", "cached", "exitCode", "error", "skipReason",
-		"startedAt", "finishedAt", "durationMs", "afterHook", "log"}
+	fields := []string{"name", "label", "state", "cached", "afterHook", "savedMs", "cache", "exitCode", "error", "skipReason",
+		"startedAt", "finishedAt", "durationMs", "log"}
 	for _, task := range doc.Tasks {
 		for _, f := range fields {
 			if _, ok := task[f]; !ok {
@@ -180,5 +182,30 @@ func TestJSONReporter_AfterHook(t *testing.T) {
 		if want := task.Name == "notify"; task.AfterHook != want {
 			t.Errorf("%s: afterHook %v, want %v", task.Name, task.AfterHook, want)
 		}
+	}
+}
+
+func TestJSONCache(t *testing.T) {
+	str := func(s string) *string { return &s }
+	tests := []struct {
+		name string
+		res  runner.TaskResult
+		want JSONCache
+	}{
+		{"hit", runner.TaskResult{State: runner.Succeeded, Cached: true, Cache: &runner.CacheOutcome{}}, JSONCache{Enabled: true, Hit: true}},
+		{"miss", runner.TaskResult{State: runner.Succeeded, Cache: &runner.CacheOutcome{Miss: &cache.Explanation{NoPrevious: true}}}, JSONCache{Enabled: true, Reason: str("no previous entry")}},
+		{"uncached upstream", runner.TaskResult{State: runner.Succeeded, Cache: &runner.CacheOutcome{Uncached: "depends on uncached tools"}}, JSONCache{Reason: str("depends on uncached tools")}},
+		{"forced", runner.TaskResult{State: runner.Succeeded, Cache: &runner.CacheOutcome{Forced: true}}, JSONCache{Enabled: true, Reason: str("--force")}},
+		{"disabled", runner.TaskResult{State: runner.Succeeded}, JSONCache{Reason: str("cache disabled")}},
+		{"skipped", runner.TaskResult{State: runner.Skipped}, JSONCache{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := jsonCache(tt.res)
+			if got.Enabled != tt.want.Enabled || got.Hit != tt.want.Hit || (got.Reason == nil) != (tt.want.Reason == nil) ||
+				(got.Reason != nil && *got.Reason != *tt.want.Reason) {
+				t.Errorf("jsonCache = %+v (reason %v), want %+v", got, got.Reason, tt.want)
+			}
+		})
 	}
 }
