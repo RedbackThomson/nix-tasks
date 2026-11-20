@@ -82,8 +82,6 @@ func (e *Executor) taskOutput(name string) (stdout, stderr io.Writer) {
 func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) error {
 	if e.options.Progress != nil {
 		e.options.Progress.TaskStarted(name)
-	} else {
-		e.printer.TaskStarted(name)
 	}
 
 	// Default to shell type if not specified
