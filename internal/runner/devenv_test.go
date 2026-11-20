@@ -50,8 +50,8 @@ func TestRun_TaskShellsRealisedOncePerDrv(t *testing.T) {
 	}
 
 	h.run(context.Background(), tasks, "all")
-	if len(h.nix.evals) != 1 || !slices.Equal(h.nix.evals[0], []string{"a", "b", "c", "all"}) {
-		t.Errorf("drvPaths should be evaluated once, got %v", h.nix.evals)
+	if len(h.nix.evals) != 1 || !slices.Equal(h.nix.evals[0], []string{"a", "b", "c"}) {
+		t.Errorf("drvPaths should be evaluated once for the tasks that run a script, got %v", h.nix.evals)
 	}
 	realised := slices.Sorted(slices.Values(h.nix.realised))
 	if !slices.Equal(realised, []string{"/nix/store/other-nix-shell.drv", "/nix/store/shared-nix-shell.drv"}) {
@@ -86,6 +86,29 @@ func TestRun_TaskShellRealisedAgainAfterGC(t *testing.T) {
 	assertStates(t, h.run(context.Background(), tasks, "a"), map[string]runner.TaskState{"a": runner.Succeeded})
 	if len(h.nix.realised) != 1 {
 		t.Errorf("a collected environment should be realised again, realised %v", h.nix.realised)
+	}
+}
+
+func TestRun_TasksWithoutScriptSkipTheShell(t *testing.T) {
+	h := newHarness(t)
+	tasks := map[string]config.Task{
+		"a":     logged("a"),
+		"group": {Depends: []string{"task:a"}},
+		"empty": {Commands: []string{}},
+	}
+	assertStates(t, h.run(context.Background(), tasks, "group"), map[string]runner.TaskState{
+		"a": runner.Succeeded, "group": runner.Succeeded,
+	})
+	assertStates(t, h.run(context.Background(), tasks, "empty"), map[string]runner.TaskState{
+		"empty": runner.Succeeded,
+	})
+	for _, eval := range h.nix.evals {
+		if slices.Contains(eval, "group") || slices.Contains(eval, "empty") {
+			t.Errorf("evaluated the shell of a task with nothing to run: %v", h.nix.evals)
+		}
+	}
+	if len(h.nix.realised) != 1 {
+		t.Errorf("only a's shell should be realised, got %v", h.nix.realised)
 	}
 }
 

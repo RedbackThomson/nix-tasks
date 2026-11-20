@@ -188,9 +188,9 @@ func TestTaskEnv_ShellsRealisedOncePerRun(t *testing.T) {
 	if n := strings.Count(stderr, `msg="evaluated task shells"`); n != 1 {
 		t.Errorf("task shells evaluated %d times, want 1", n)
 	}
-	// a and b share a shell.
-	if n := strings.Count(stderr, `msg="realised task shell"`); n != 3 {
-		t.Errorf("realised %d shells, want 3\nstderr: %s", n, stderr)
+	// a and b share a shell, and the compound task needs none.
+	if n := strings.Count(stderr, `msg="realised task shell"`); n != 2 {
+		t.Errorf("realised %d shells, want 2\nstderr: %s", n, stderr)
 	}
 	for _, f := range []string{"a.txt", "b.txt", "c.txt"} {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
@@ -205,7 +205,7 @@ func TestTaskEnv_ShellsRealisedOncePerRun(t *testing.T) {
 	if n := strings.Count(stderr, `msg="realised task shell"`); n != 0 {
 		t.Errorf("second run realised %d shells, want 0 (cached)", n)
 	}
-	if n := strings.Count(stderr, `msg="dev env cache hit"`); n != 3 {
-		t.Errorf("second run had %d dev env cache hits, want 3", n)
+	if n := strings.Count(stderr, `msg="dev env cache hit"`); n != 2 {
+		t.Errorf("second run had %d dev env cache hits, want 2", n)
 	}
 }

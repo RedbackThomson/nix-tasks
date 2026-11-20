@@ -77,7 +77,7 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, target string) ([]
 	var needShell []string
 	for _, name := range order {
 		task := graph.tasks[name]
-		if task.Type != config.TaskTypeBuild && task.ShellDrvPath == "" {
+		if task.Type != config.TaskTypeBuild && task.ShellDrvPath == "" && taskScript(task) != "" {
 			needShell = append(needShell, name)
 		}
 	}
