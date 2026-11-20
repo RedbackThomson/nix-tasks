@@ -311,7 +311,7 @@ $ nix-tasks run deploy
 ✓ build (2.1s)
 ✓ deploy (0.8s)
 
-# Run at most 8 tasks at once (the default is the number of CPUs available)
+# Run at most 8 tasks at once
 $ nix-tasks run ci -j 8
 
 # Continue running independent tasks even if one fails
@@ -354,7 +354,9 @@ Deleting the directory is always safe. A task with neither `commands` nor
 as soon as its dependencies do.
 
 Each task starts as soon as all of its dependencies have succeeded, up to `-j`
-tasks at a time. If a dependency fails, its dependents are skipped. By default
+tasks at a time. Without `-j`, the limit comes from the `NIX_TASKS_JOBS`
+environment variable, and without that it is the number of CPUs available to
+nix-tasks. If a dependency fails, its dependents are skipped. By default
 the first failure stops the run: tasks still running are interrupted and the
 rest are skipped. With `--continue-on-error`, independent tasks keep running,
 but dependents of a failed task are still skipped. A task with

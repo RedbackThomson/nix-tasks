@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -18,11 +20,21 @@ import (
 // RunCmd runs a task
 type RunCmd struct {
 	Task            string `arg:"" help:"Task name to run"`
-	Jobs            int    `short:"j" help:"Number of tasks to run at once (default: the number of CPUs available)"`
+	Jobs            *int   `short:"j" help:"Number of tasks to run at once (default: $NIX_TASKS_JOBS, or else the number of CPUs available)"`
 	ContinueOnError bool   `help:"Continue running independent tasks on failure"`
 	Force           bool   `help:"Force re-run tasks even if cached"`
 	NoCache         bool   `help:"Disable caching (don't read or write cache)"`
 	Raw             bool   `help:"Pipe task output directly to stdout/stderr with no decoration"`
+}
+
+// Validate is called by kong after parsing.
+func (c *RunCmd) Validate() error {
+	jobs, err := resolveJobs(c.Jobs, os.Getenv("NIX_TASKS_JOBS"))
+	if err != nil {
+		return err
+	}
+	c.Jobs = &jobs
+	return nil
 }
 
 // Run executes the run command
@@ -77,7 +89,7 @@ func (c *RunCmd) Run(globals *Globals) error {
 	reporter.Start()
 	defer reporter.Stop()
 	executor := runner.NewExecutor(eval, cfg, runner.Options{
-		Jobs:            c.Jobs,
+		Jobs:            *c.Jobs,
 		ContinueOnError: c.ContinueOnError,
 		Force:           c.Force,
 		NoCache:         c.NoCache,
@@ -116,4 +128,26 @@ func (c *RunCmd) newReporter(globals *Globals) ui.Reporter {
 		return ui.NewProgressReporter(ui.ProgressOptions{Out: os.Stdout})
 	}
 	return ui.NewLineReporter(os.Stdout, false)
+}
+
+// resolveJobs returns how many tasks run at once: -j if given, else
+// NIX_TASKS_JOBS if set, else one per CPU nix-tasks may use.
+func resolveJobs(flag *int, env string) (int, error) {
+	if flag != nil {
+		if *flag < 1 {
+			return 0, fmt.Errorf("--jobs must be at least 1, got %d", *flag)
+		}
+		return *flag, nil
+	}
+	if env == "" {
+		return runtime.GOMAXPROCS(0), nil
+	}
+	n, err := strconv.Atoi(env)
+	if err != nil {
+		return 0, fmt.Errorf("NIX_TASKS_JOBS must be a whole number, got %q", env)
+	}
+	if n < 1 {
+		return 0, fmt.Errorf("NIX_TASKS_JOBS must be at least 1, got %d", n)
+	}
+	return n, nil
 }
