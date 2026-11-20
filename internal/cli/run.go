@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/cache"
-	"github.com/redbackthomson/nix-tasks/internal/config"
-	"github.com/redbackthomson/nix-tasks/internal/nix"
 	"github.com/redbackthomson/nix-tasks/internal/runner"
 	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
@@ -46,18 +44,14 @@ func (c *RunCmd) Run(globals *Globals) error {
 		}
 	}()
 
-	// Initialize Nix evaluator
-	eval := nix.NewEvaluator(globals.Flake)
-
-	// Load configuration
 	slog.Debug("loading config", "flake", globals.Flake)
 	configStart := time.Now()
-	cfg, err := config.Load(ctx, eval)
+	cfg, eval, err := loadConfig(ctx, globals)
 	if ctx.Err() != nil {
 		return errInterrupted
 	}
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
 	}
 	slog.Debug("config loaded", "duration", time.Since(configStart), "tasks", len(cfg.Tasks))
 

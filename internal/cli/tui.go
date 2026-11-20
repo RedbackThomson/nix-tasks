@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/redbackthomson/nix-tasks/internal/config"
-	"github.com/redbackthomson/nix-tasks/internal/nix"
 	"github.com/redbackthomson/nix-tasks/internal/tui"
 	"github.com/redbackthomson/nix-tasks/internal/ui"
 )
@@ -23,11 +21,9 @@ func (c *TUICmd) Run(globals *Globals) error {
 
 	ctx := context.Background()
 
-	eval := nix.NewEvaluator(globals.Flake)
-
-	cfg, err := config.Load(ctx, eval)
+	cfg, _, err := loadConfig(ctx, globals)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
 	}
 
 	return tui.Run(cfg, globals.Flake)

@@ -27,12 +27,9 @@ func (c *ShellCmd) Run(globals *Globals) error {
 		shellName = "default"
 	}
 
-	eval := nix.NewEvaluator(globals.Flake)
-
-	// Load and validate config
-	cfg, err := config.Load(ctx, eval)
+	cfg, eval, err := loadConfig(ctx, globals)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		return err
 	}
 
 	// Verify shell exists

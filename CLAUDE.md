@@ -265,7 +265,7 @@ cmd/
     nix-tasks/
         main.go           # Entry point only - minimal code
 internal/
-    cli/                  # Kong commands, one file per command (run.go, list.go, ...)
+    cli/                  # Kong commands, one file per command (run.go, list.go, ...); load.go loads config for all
     config/               # Types (config.go), loading (loader.go), validation (validate.go)
     nix/                  # nix CLI wrapper (evaluator.go) and its errors (errors.go)
     runner/               # Dependency graph (graph.go) and task execution
@@ -592,10 +592,6 @@ package cli
 
 import (
     "context"
-    "fmt"
-
-    "github.com/redbackthomson/nix-tasks/internal/config"
-    "github.com/redbackthomson/nix-tasks/internal/nix"
 )
 
 type NewCmd struct {
@@ -605,11 +601,9 @@ type NewCmd struct {
 func (c *NewCmd) Run(globals *Globals) error {
     ctx := context.Background()
 
-    eval := nix.NewEvaluator(globals.Flake)
-
-    cfg, err := config.Load(ctx, eval)
+    cfg, eval, err := loadConfig(ctx, globals)
     if err != nil {
-        return fmt.Errorf("failed to load config: %w", err)
+        return err
     }
 
     // Implementation
