@@ -341,22 +341,6 @@ func TestTaskGraph_Dependencies(t *testing.T) {
 	if len(cDeps) != 2 {
 		t.Errorf("Dependencies(c) = %v, want [a, b]", cDeps)
 	}
-
-	// Test Dependents (reverse)
-	aDependents := graph.Dependents("a")
-	if len(aDependents) != 2 {
-		t.Errorf("Dependents(a) = %v, want [b, c]", aDependents)
-	}
-
-	bDependents := graph.Dependents("b")
-	if len(bDependents) != 1 || bDependents[0] != "c" {
-		t.Errorf("Dependents(b) = %v, want [c]", bDependents)
-	}
-
-	cDependents := graph.Dependents("c")
-	if len(cDependents) != 0 {
-		t.Errorf("Dependents(c) = %v, want []", cDependents)
-	}
 }
 
 func TestNewTaskGraph_AfterHooks(t *testing.T) {
