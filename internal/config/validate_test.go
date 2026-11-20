@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
@@ -116,6 +117,20 @@ func TestValidate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "unknown task type",
+			config: &config.Config{
+				Tasks: map[string]config.Task{"build": {Type: "docker"}},
+			},
+			wantErr: true,
+		},
+		{
+			name: "explicit and implicit task types",
+			config: &config.Config{
+				Tasks: map[string]config.Task{"a": {}, "b": {Type: config.TaskTypeShell}, "c": {Type: config.TaskTypeBuild}},
+			},
+			wantErr: false,
+		},
+		{
 			name: "empty config",
 			config: &config.Config{
 				Packages:  []string{},
@@ -140,5 +155,25 @@ func TestValidate(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestValidate_ErrorsSorted(t *testing.T) {
+	cfg := &config.Config{
+		Tasks: map[string]config.Task{
+			"z": {Deps: []string{"go"}},
+			"a": {Depends: []string{"missing"}, Deps: []string{"rust"}},
+			"m": {Type: "weird"},
+		},
+		DevShells: map[string]config.Shell{"ci": {Packages: []string{"jq"}}},
+	}
+	for i := 0; i < 5; i++ {
+		var validErr *config.ValidationError
+		if !errors.As(config.Validate(cfg), &validErr) {
+			t.Fatal("expected a ValidationError")
+		}
+		if !slices.IsSorted(validErr.Errors) || len(validErr.Errors) != 5 {
+			t.Fatalf("errors not sorted or incomplete: %q", validErr.Errors)
+		}
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"runtime"
+	"slices"
 	"time"
 )
 
@@ -157,4 +158,41 @@ func (e *Evaluator) PrintDevEnvCmd(ctx context.Context, drvPath, profile string)
 	slog.Debug("running nix command", "cmd", "nix", "args", args)
 
 	return exec.CommandContext(ctx, "nix", args...)
+}
+
+// UnbuildableTasks returns the sorted subset of tasks whose
+// nixTasksBuilds.<system> attribute is missing or not a derivation. Only
+// drvPath's presence is checked, so nothing is instantiated or built.
+func (e *Evaluator) UnbuildableTasks(ctx context.Context, system string, tasks []string) ([]string, error) {
+	if len(tasks) == 0 {
+		return nil, nil
+	}
+	wanted := make(map[string]any, len(tasks))
+	for _, t := range tasks {
+		wanted[t] = nil
+	}
+	wantedJSON, err := json.Marshal(wanted)
+	if err != nil {
+		return nil, err
+	}
+
+	attr := "nixTasksBuilds." + QuoteAttr(system)
+	apply := fmt.Sprintf(
+		"builds: builtins.mapAttrs (n: _: let r = builtins.tryEval ((builds.${n} or null) ? drvPath); in r.success && r.value) (builtins.fromJSON %s)",
+		NixString(string(wantedJSON)))
+	var ok map[string]bool
+	if err := e.eval(ctx, attr, []string{"--apply", apply}, &ok); err != nil {
+		if IsMissingAttribute(err) {
+			return slices.Sorted(slices.Values(tasks)), nil
+		}
+		return nil, err
+	}
+	var broken []string
+	for _, t := range tasks {
+		if !ok[t] {
+			broken = append(broken, t)
+		}
+	}
+	slices.Sort(broken)
+	return broken, nil
 }

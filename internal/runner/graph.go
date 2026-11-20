@@ -88,7 +88,7 @@ func (g *TaskGraph) findCycle() []string {
 		return nil
 	}
 
-	for name := range g.tasks {
+	for _, name := range slices.Sorted(maps.Keys(g.tasks)) {
 		if !visited[name] {
 			if cycle := dfs(name, nil); cycle != nil {
 				return cycle
