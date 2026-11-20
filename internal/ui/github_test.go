@@ -192,7 +192,7 @@ func TestGitHubReporter_PaletteBySortedName(t *testing.T) {
 	for i, want := range []string{"36", "35", "34", "96", "95", "94", "36", "35", "34", "96"} {
 		name := fmt.Sprintf("t%d", i)
 		o, _ := g.TaskOutput(name)
-		fmt.Fprintln(o, "x")
+		_, _ = fmt.Fprintln(o, "x")
 		if line := fmt.Sprintf("\x1b[%sm%s │\x1b[0m x\n", want, name); !strings.Contains(out.String(), line) {
 			t.Errorf("%s: expected colour %s, output:\n%q", name, want, out.String())
 		}
@@ -257,7 +257,7 @@ func TestGitHubReporter_StopRemovesSpool(t *testing.T) {
 	var out bytes.Buffer
 	g := NewGitHubReporter(GitHubOptions{Out: &out})
 	o, _ := g.TaskOutput("a")
-	fmt.Fprintln(o, "x")
+	_, _ = fmt.Fprintln(o, "x")
 	dir := g.spoolDir
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("expected a spool dir: %v", err)
@@ -315,7 +315,7 @@ func TestJobSummary_DetailsShowLast50Lines(t *testing.T) {
 	g := newTestGitHub(t, &out, &fakeClock{now: t0}, summary)
 	o, _ := g.TaskOutput("big")
 	for i := range 80 {
-		fmt.Fprintf(o, "line %d ```\n", i)
+		_, _ = fmt.Fprintf(o, "line %d ```\n", i)
 	}
 	res := runner.TaskResult{Name: "big", State: runner.Failed, Error: exitError(t, 1), Duration: time.Second}
 	g.TaskFinished(res)
@@ -422,8 +422,8 @@ func TestGitHubReporter_ParallelLinesStayWhole(t *testing.T) {
 			defer func() { done <- struct{}{} }()
 			o, e := g.TaskOutput(name)
 			for i := range 200 {
-				fmt.Fprintf(o, "%s out %d\n", name, i)
-				fmt.Fprintf(e, "%s err %d\n", name, i)
+				_, _ = fmt.Fprintf(o, "%s out %d\n", name, i)
+				_, _ = fmt.Fprintf(e, "%s err %d\n", name, i)
 			}
 		}()
 	}
