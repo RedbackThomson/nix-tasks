@@ -503,17 +503,21 @@ func (e *Evaluator) Eval(ctx context.Context, attr string, result any) error {
 
 ### Running Task Commands
 
-Shell tasks run their script inside the task's shell:
-`Evaluator.DevelopCmd` builds `nix develop <flake>#nixTasksShells."<system>"."<task>"
---command bash -e -o pipefail -c <script>`, where the script is the task's `script` or its
-`commands` joined by newlines. Build tasks run
+Shell tasks run their script with the `bash` from the task's shell, in the
+environment `nix develop` would give it. `Evaluator.ShellDrvPaths` evaluates
+the drvPaths of all the run's task shells from `nixTasksShellDrvs."<system>"`
+in one `nix eval`; `Evaluator.PrintDevEnvCmd` realises each distinct shell
+once with `nix print-dev-env --json --profile <link>`, and
+`internal/runner/devenv.go` caches the result on disk by drvPath. The script
+(the task's `script`, or its `commands` joined by newlines) runs as
+`bash -e -o pipefail -c <script>`. Build tasks run
 `nix build <flake>#nixTasksBuilds."<system>"."<task>"^* --no-link --json`
 (`Evaluator.BuildCmd`) and link each output nix reports to
 `.nix-tasks/<task>/<output>`.
 
 Build flake attribute paths with the helpers in `internal/nix/attrs.go`
-(`AttrPath`, `NixTasksShellsAttr`, `NixTasksBuildsAttr`, `DevShellAttr`),
-which quote each name so a task such as `lint.go` stays one attribute.
+(`QuoteAttr`, `AttrPath`, `NixTasksBuildsAttr`, `DevShellAttr`), which quote
+each name so a task such as `lint.go` stays one attribute.
 
 ## Code Style
 

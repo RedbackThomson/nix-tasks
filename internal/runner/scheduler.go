@@ -74,6 +74,15 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, target string) ([]
 		return nil, err
 	}
 
+	var needShell []string
+	for _, name := range order {
+		task := graph.tasks[name]
+		if task.Type != config.TaskTypeBuild && task.ShellDrvPath == "" {
+			needShell = append(needShell, name)
+		}
+	}
+	e.devEnvs = newDevEnvs(e.nix, e.options.DevEnvDir, needShell)
+
 	remaining := make(map[string]int, len(order))
 	dependents := make(map[string][]string, len(order))
 	for _, name := range order {

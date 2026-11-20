@@ -20,11 +20,10 @@ import (
 	"github.com/redbackthomson/nix-tasks/internal/nix"
 )
 
-// Nix is what the runner needs from Nix: commands that run a script in a
-// task's dev shell and that build a flake attribute. *nix.Evaluator
-// satisfies it.
+// Nix is what the runner needs from Nix. *nix.Evaluator satisfies it.
 type Nix interface {
-	DevelopCmd(ctx context.Context, shellAttr string, command []string) *exec.Cmd
+	ShellDrvPaths(ctx context.Context, system string, tasks []string) (map[string]string, error)
+	PrintDevEnvCmd(ctx context.Context, drvPath, profile string) *exec.Cmd
 	BuildCmd(ctx context.Context, attr string) *exec.Cmd
 }
 
@@ -47,6 +46,10 @@ type Options struct {
 	// FlakeRoot is the directory tasks run in and relative workingDirs and
 	// .nix-tasks/ resolve against. Empty means the current directory.
 	FlakeRoot string
+
+	// DevEnvDir caches task shell environments. Empty means the devenv
+	// directory under the nix-tasks cache directory.
+	DevEnvDir string
 }
 
 // Executor runs a task and its dependencies
@@ -56,12 +59,16 @@ type Executor struct {
 	options  Options
 	cache    *cache.Store
 	reporter Reporter
+	devEnvs  *devEnvs
 }
 
 // NewExecutor creates a task executor
 func NewExecutor(n Nix, cfg *config.Config, opts Options) *Executor {
 	if opts.Jobs <= 0 {
 		opts.Jobs = runtime.GOMAXPROCS(0)
+	}
+	if opts.DevEnvDir == "" {
+		opts.DevEnvDir = filepath.Join(cache.Dir(), "devenv")
 	}
 	var store *cache.Store
 	if !opts.NoCache && opts.ProjectKey != "" {
@@ -108,38 +115,80 @@ func (e *Executor) taskDir(task config.Task) string {
 	return filepath.Join(e.options.FlakeRoot, task.WorkingDir)
 }
 
-// runShellTask executes a shell task in nix develop
+// taskScript returns the script a shell task runs, empty when it has none.
+func taskScript(task config.Task) string {
+	if task.Script != "" {
+		return task.Script
+	}
+	return strings.Join(task.Commands, "\n")
+}
+
+// runShellTask runs a shell task's script with bash in the environment of
+// the task's shell.
 func (e *Executor) runShellTask(ctx context.Context, name string, task config.Task) error {
-	script := task.Script
-	if script == "" {
-		script = strings.Join(task.Commands, "\n")
+	script := taskScript(task)
+
+	stdout, stderr := e.reporter.TaskOutput(name)
+
+	drvPath := task.ShellDrvPath
+	if drvPath == "" {
+		var err error
+		if drvPath, err = e.devEnvs.drvPath(ctx, name); err != nil {
+			return err
+		}
+	}
+	devEnv, err := e.devEnvs.env(ctx, drvPath, stderr)
+	if err != nil {
+		return err
 	}
 
-	// Run inside nix develop with the task's shell
-	system := nix.CurrentSystem()
-	shellAttr := nix.NixTasksShellsAttr(system, name)
-	cmd := e.nix.DevelopCmd(ctx, shellAttr, []string{"bash", "-e", "-o", "pipefail", "-c", script})
+	dir := e.taskDir(task)
+	env := withTaskEnv(devEnv.Environ(os.Environ(), dir), task.Env)
 
+	bash, err := lookPath("bash", envValue(env, "PATH"))
+	if err != nil {
+		return err
+	}
+
+	cmd := exec.CommandContext(ctx, bash, "-e", "-o", "pipefail", "-c", script)
 	isolateProcessGroup(cmd)
-	cmd.Stdout, cmd.Stderr = e.reporter.TaskOutput(name)
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	cmd.Dir = dir
+	cmd.Env = env
 
-	cmd.Dir = e.taskDir(task)
-
-	// Set environment variables
-	cmd.Env = os.Environ()
-	for k, v := range task.Env {
-		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	// Execute
-	slog.Debug("starting nix develop shell", "task", name, "shell", shellAttr)
+	slog.Debug("starting task shell", "task", name, "drv", drvPath)
 	start := time.Now()
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-	slog.Debug("nix develop shell exited", "task", name, "duration", time.Since(start))
+	slog.Debug("task shell exited", "task", name, "duration", time.Since(start))
 
 	return nil
+}
+
+// withTaskEnv applies a task's env over env. A task's PATH is prepended, so
+// adding a directory does not hide the shell's tools.
+func withTaskEnv(env []string, taskEnv map[string]string) []string {
+	for k, v := range taskEnv {
+		if k == "PATH" {
+			if current := envValue(env, "PATH"); current != "" {
+				v += ":" + current
+			}
+		}
+		env = append(env, k+"="+v)
+	}
+	return env
+}
+
+// envValue returns the last value of key in env, which is the one a process
+// started with env sees.
+func envValue(env []string, key string) string {
+	for i := len(env) - 1; i >= 0; i-- {
+		if k, v, ok := strings.Cut(env[i], "="); ok && k == key {
+			return v
+		}
+	}
+	return ""
 }
 
 // runBuildTask builds the task's nixTasksBuilds flake attribute and links
