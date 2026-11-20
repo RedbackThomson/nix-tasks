@@ -5,7 +5,7 @@
 { lib, pkgs }:
 let
   taskFields = [
-    "description" "type" "deps" "depends" "after" "commands" "script" "env"
+    "description" "label" "type" "deps" "depends" "after" "commands" "script" "env"
     "workingDir" "continueOnError" "inputs" "noCache" "derivation"
   ];
 in

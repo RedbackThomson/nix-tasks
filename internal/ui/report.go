@@ -92,6 +92,23 @@ func resultDetail(r runner.TaskResult) string {
 	return detail
 }
 
+// labelOf returns name's display label, or name when it has none.
+func labelOf(labels map[string]string, name string) string {
+	if l := labels[name]; l != "" {
+		return l
+	}
+	return name
+}
+
+// withLabel names a task by its label and full name when they differ, so
+// prefixed output can be traced back to the task.
+func withLabel(name, label string) string {
+	if label == name {
+		return name
+	}
+	return label + " = " + name
+}
+
 // formatStarted is the line printed when a task starts.
 func formatStarted(name string) string {
 	return Accent("▶") + " " + name

@@ -27,3 +27,22 @@ func (discardReporter) TaskOutput(string) (io.Writer, io.Writer) {
 }
 
 func (discardReporter) TaskFinished(TaskResult) {}
+
+// RunPlan describes a run before any task starts.
+type RunPlan struct {
+	// Targets are the tasks the run was asked for.
+	Targets []string
+	// Tasks is the execution set with every task after its dependencies and
+	// ties broken by name, so the same pipeline always lists the same way.
+	Tasks []string
+	// Labels maps every task in the config to its display label.
+	Labels map[string]string
+	Jobs   int
+}
+
+// PlanReporter is implemented by reporters that lay out output for the
+// whole run, such as aligning prefixes to the longest label. RunPlanned is
+// called once, before anything else.
+type PlanReporter interface {
+	RunPlanned(plan RunPlan)
+}

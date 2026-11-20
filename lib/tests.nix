@@ -302,6 +302,22 @@ let
       expr = configFails [ { tasks.b = { type = "build"; derivation = throw "forced"; }; } ];
       expected = false;
     };
+    testLabelSerialized = {
+      expr = (task "t" [ { tasks.t = { label = "short"; commands = [ "x" ]; }; } ]).label;
+      expected = "short";
+    };
+    testLabelOmittedWhenUnset = {
+      expr = (task "t" [ { tasks.t.commands = [ "x" ]; } ]) ? label;
+      expected = false;
+    };
+    testLabelRejectsEmpty = {
+      expr = configFails [ { tasks.t.label = ""; } ];
+      expected = true;
+    };
+    testMkGoTaskKeepsLabel = {
+      expr = (ntLib.mkGoTask { pname = "app"; src = ./.; vendorHash = null; label = "app"; }).label;
+      expected = "app";
+    };
     testConfigDoesNotForcePackages = {
       expr = (json [ { packages.broken = throw "forced"; } ]).packages;
       expected = [ "broken" ];

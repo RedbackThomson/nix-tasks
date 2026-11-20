@@ -422,6 +422,34 @@ where the output goes:
 
 An explicit `--output` mode wins over `-v` and the environment.
 
+##### Display labels
+
+Streamed output prefixes each line with the task's display label, and the
+live display names running tasks by it; result lines and the summary always
+use the full name. The label is:
+
+1. the task's `label`, if set (for example `label = "ec2-crds";`);
+2. the full name, if it is at most 24 characters;
+3. otherwise the name with its leading words cut to initials, keeping the
+   last two words whole. Words are split on `-`, `_`, `.`, `:` and `/`, and
+   the separators are kept. If two tasks still get the same abbreviation,
+   both keep one more word whole until they differ.
+
+```
+generate-crossplane-provider-aws-ec2-managed-resources-crds  → g-c-p-a-e-m-resources-crds
+test-unit-crossplane-provider-aws-ec2-managed-resources      → t-u-c-p-a-e-managed-resources
+lint                                                         → lint
+```
+
+Labels depend only on the configuration, never on which tasks a run
+includes, so a task is always shown the same way. When a task's label
+differs from its name, its start line gives both:
+`▶ g-c-p-a-e-m-resources-crds = generate-crossplane-provider-aws-ec2-managed-resources-crds`.
+Two tasks with the same `label`, or a `label` that is another task's name, is
+a validation error, and `nix-tasks validate` warns about every task whose name
+is over 24 characters and has no `label`. `nix-tasks describe` shows a task's
+label, or its abbreviation when the name is abbreviated.
+
 ```
 ▶ build
 ▶ test
@@ -560,6 +588,7 @@ errors.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `description` | string | `""` | Shown by `list` and `describe` |
+| `label` | non-empty string or null | `null` | Short name for streamed output; see [Display labels](#display-labels) |
 | `type` | `"shell"` or `"build"` | `"shell"` | Shell tasks run commands; build tasks build `derivation` |
 | `deps` | list of package names | `[]` | Packages available to the task |
 | `depends` | list of `task:<name>` | `[]` | Tasks that must finish first |
@@ -680,7 +709,7 @@ tasks.build = tasksLib.mkGoTask {
 `mkGoTask` creates a build task backed by `buildGoModule`. `pname` and `src`
 are required; `version` defaults to `"0.1.0"`, `ldflags` and `tags` to `[]`.
 `env` is merged over the default `CGO_ENABLED = "0"` and set on the
-derivation. Task fields (`description`, `deps`, `depends`, `after`,
+derivation. Task fields (`description`, `label`, `deps`, `depends`, `after`,
 `continueOnError`, `noCache`) are applied to the task; every other argument is
 passed to `buildGoModule`. Build tasks are exposed as the flake output
 `nixTasksBuilds.<system>.<task>`; `nix-tasks run` builds that attribute and

@@ -17,6 +17,11 @@ let
         type = types.str;
         default = "";
       };
+      label = mkOption {
+        type = types.nullOr types.nonEmptyStr;
+        default = null;
+        description = "Short name shown in streamed output in place of a long task name.";
+      };
       type = mkOption {
         type = types.enum [ "shell" "build" ];
         default = "shell";

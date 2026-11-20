@@ -9,7 +9,7 @@ import (
 
 // LineReporter prints one line when each task starts and one when it
 // finishes. With Stream set, task output is printed as it arrives, each line
-// prefixed with the task name; otherwise it is held and only failed tasks'
+// prefixed with the task's display label; otherwise it is held and only failed tasks'
 // output is shown, in the summary. It suits CI logs and piped output, where
 // the terminal cannot be redrawn.
 type LineReporter struct {
@@ -19,6 +19,7 @@ type LineReporter struct {
 	mu      sync.Mutex // serializes whole-line writes to out
 	writers map[string]*prefixWriter
 	outputs outputBuffers
+	labels  map[string]string
 }
 
 // NewLineReporter creates a LineReporter writing to out.
@@ -30,8 +31,24 @@ func (r *LineReporter) Start()     {}
 func (r *LineReporter) Interrupt() {}
 func (r *LineReporter) Stop()      {}
 
+func (r *LineReporter) RunPlanned(plan runner.RunPlan) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.labels = plan.Labels
+}
+
 func (r *LineReporter) TaskStarted(name string) {
+	if r.stream {
+		r.writeLine(formatStarted(withLabel(name, r.label(name))))
+		return
+	}
 	r.writeLine(formatStarted(name))
+}
+
+func (r *LineReporter) label(name string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return labelOf(r.labels, name)
 }
 
 func (r *LineReporter) TaskOutput(name string) (io.Writer, io.Writer) {
@@ -43,7 +60,7 @@ func (r *LineReporter) TaskOutput(name string) (io.Writer, io.Writer) {
 	defer r.mu.Unlock()
 	w, ok := r.writers[name]
 	if !ok {
-		w = &prefixWriter{prefix: "[" + name + "] ", out: r.out, outMu: &r.mu}
+		w = &prefixWriter{prefix: "[" + labelOf(r.labels, name) + "] ", out: r.out, outMu: &r.mu}
 		r.writers[name] = w
 	}
 	return w, w
