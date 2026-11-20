@@ -346,7 +346,7 @@ func TestProjectKey(t *testing.T) {
 
 		// Key should be hex-encoded and not contain special chars
 		for _, c := range key {
-			if !((c >= 'a' && c <= 'f') || (c >= '0' && c <= '9')) {
+			if (c < 'a' || c > 'f') && (c < '0' || c > '9') {
 				t.Errorf("Key contains invalid character: %c", c)
 			}
 		}

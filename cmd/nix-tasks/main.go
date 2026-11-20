@@ -22,14 +22,14 @@ func main() {
 	ctx, parseErr := parser.Parse(os.Args[1:])
 	parser.FatalIfErrorf(parseErr)
 
-	if rootCmd.Globals.Debug {
+	if rootCmd.Debug {
 		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 			Level: slog.LevelDebug,
 		})))
 	}
 
-	ui.SetColor(rootCmd.Globals.ColorEnabled())
-	ctx.FatalIfErrorf(rootCmd.Globals.ResolveFlake())
+	ui.SetColor(rootCmd.ColorEnabled())
+	ctx.FatalIfErrorf(rootCmd.ResolveFlake())
 
 	err := ctx.Run(&rootCmd.Globals)
 

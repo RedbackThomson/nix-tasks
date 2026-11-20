@@ -10,6 +10,7 @@ import (
 	"sort"
 
 	"github.com/bmatcuk/doublestar/v4"
+
 	"github.com/redbackthomson/nix-tasks/internal/config"
 )
 
