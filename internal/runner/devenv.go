@@ -32,23 +32,32 @@ type devEnvs struct {
 	drvs    map[string]string
 	drvErr  error
 
-	mu   sync.Mutex
-	envs map[string]*devEnvEntry
+	mu       sync.Mutex
+	envs     map[string]*devEnvEntry
+	fallback map[string]drvResult
 }
 
 type devEnvEntry struct {
-	once sync.Once
-	env  *nix.DevEnv
-	err  error
+	once     sync.Once
+	env      *nix.DevEnv
+	err      error
+	cached   bool
+	duration time.Duration
+}
+
+type drvResult struct {
+	drv string
+	err error
 }
 
 func newDevEnvs(n Nix, dir string, pending []string) *devEnvs {
 	return &devEnvs{
-		nix:     n,
-		system:  nix.CurrentSystem(),
-		dir:     dir,
-		pending: pending,
-		envs:    make(map[string]*devEnvEntry),
+		nix:      n,
+		system:   nix.CurrentSystem(),
+		dir:      dir,
+		pending:  pending,
+		envs:     make(map[string]*devEnvEntry),
+		fallback: make(map[string]drvResult),
 	}
 }
 
@@ -62,18 +71,34 @@ func (d *devEnvs) drvPath(ctx context.Context, name string) (string, error) {
 	if drv := d.drvs[name]; drv != "" {
 		return drv, nil
 	}
+	d.mu.Lock()
+	r, ok := d.fallback[name]
+	d.mu.Unlock()
+	if ok {
+		return r.drv, r.err
+	}
 	// One broken shell fails the batch; evaluating this task's shell alone
 	// keeps the failure on the tasks that use it.
 	drvs, err := d.nix.ShellDrvPaths(ctx, d.system, []string{name})
 	if err != nil {
-		return "", fmt.Errorf("failed to evaluate the task's shell: %w", err)
+		err = fmt.Errorf("failed to evaluate the task's shell: %w", err)
 	}
-	return drvs[name], nil
+	r = drvResult{drv: drvs[name], err: err}
+	d.mu.Lock()
+	d.fallback[name] = r
+	d.mu.Unlock()
+	return r.drv, r.err
 }
 
 // env returns the environment of the shell derivation drvPath. Output from
 // realising the shell goes to progress.
 func (d *devEnvs) env(ctx context.Context, drvPath string, progress io.Writer) (*nix.DevEnv, error) {
+	entry := d.entry(ctx, drvPath, progress)
+	return entry.env, entry.err
+}
+
+// entry returns the loaded environment of drvPath with how it was obtained.
+func (d *devEnvs) entry(ctx context.Context, drvPath string, progress io.Writer) *devEnvEntry {
 	d.mu.Lock()
 	entry, ok := d.envs[drvPath]
 	if !ok {
@@ -83,12 +108,16 @@ func (d *devEnvs) env(ctx context.Context, drvPath string, progress io.Writer) (
 	d.mu.Unlock()
 
 	entry.once.Do(func() {
-		entry.env, entry.err = d.load(ctx, drvPath, progress)
+		start := time.Now()
+		entry.env, entry.cached, entry.err = d.load(ctx, drvPath, progress)
+		entry.duration = time.Since(start)
 	})
-	return entry.env, entry.err
+	return entry
 }
 
-func (d *devEnvs) load(ctx context.Context, drvPath string, progress io.Writer) (*nix.DevEnv, error) {
+// load reads drvPath's environment from the cache, or realises it, reporting
+// which it did.
+func (d *devEnvs) load(ctx context.Context, drvPath string, progress io.Writer) (*nix.DevEnv, bool, error) {
 	hash, _, _ := strings.Cut(filepath.Base(drvPath), "-")
 	jsonPath := filepath.Join(d.dir, hash+".json")
 	profile := filepath.Join(d.dir, hash+"-profile")
@@ -99,13 +128,13 @@ func (d *devEnvs) load(ctx context.Context, drvPath string, progress io.Writer) 
 		if data, err := os.ReadFile(jsonPath); err == nil {
 			if env, err := nix.ParseDevEnv(data); err == nil {
 				slog.Debug("dev env cache hit", "drv", drvPath)
-				return env, nil
+				return env, true, nil
 			}
 		}
 	}
 
 	if err := os.MkdirAll(d.dir, 0o755); err != nil {
-		return nil, fmt.Errorf("failed to create dev env cache: %w", err)
+		return nil, false, fmt.Errorf("failed to create dev env cache: %w", err)
 	}
 
 	cmd := d.nix.PrintDevEnvCmd(ctx, drvPath, profile)
@@ -116,18 +145,18 @@ func (d *devEnvs) load(ctx context.Context, drvPath string, progress io.Writer) 
 
 	start := time.Now()
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("nix print-dev-env %s failed: %w\n%s", drvPath, err, strings.TrimSpace(stderr.String()))
+		return nil, false, fmt.Errorf("nix print-dev-env %s failed: %w\n%s", drvPath, err, strings.TrimSpace(stderr.String()))
 	}
 	slog.Debug("realised task shell", "drv", drvPath, "duration", time.Since(start))
 
 	env, err := nix.ParseDevEnv(stdout.Bytes())
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := writeFileAtomic(jsonPath, stdout.Bytes()); err != nil {
 		slog.Debug("failed to cache dev env", "drv", drvPath, "error", err)
 	}
-	return env, nil
+	return env, false, nil
 }
 
 // writeFileAtomic writes data to path so concurrent nix-tasks runs never

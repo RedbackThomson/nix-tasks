@@ -51,6 +51,8 @@ type TaskResult struct {
 	State  TaskState
 	Cached bool
 	Error  error
+	// SkipReason says why a skipped task never started, e.g. "lint failed".
+	SkipReason string
 	// Start is when the task began; zero for skipped tasks.
 	Start    time.Time
 	Duration time.Duration
@@ -112,6 +114,12 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, targets ...string)
 		})
 	}
 
+	if s, ok := e.reporter.(SetupReporter); ok {
+		start := time.Now()
+		envs := e.prepareEnvs(ctx, graph, order)
+		s.SetupFinished(envs, time.Since(start))
+	}
+
 	results := make(map[string]TaskResult, len(order))
 	finish := func(r TaskResult) {
 		results[r.Name] = r
@@ -133,7 +141,7 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, targets ...string)
 				}
 				continue
 			}
-			resolve(skip(d))
+			resolve(skip(d, r.Name+" "+r.State.String()))
 		}
 	}
 
@@ -167,7 +175,7 @@ func (e *Executor) Run(ctx context.Context, graph *TaskGraph, targets ...string)
 
 	for _, name := range order {
 		if _, ok := results[name]; !ok {
-			finish(skip(name))
+			finish(skip(name, "run stopped"))
 		}
 	}
 	out := make([]TaskResult, 0, len(order))
@@ -198,8 +206,8 @@ func planOrder(ready []string, remaining map[string]int, dependents map[string][
 	return order
 }
 
-func skip(name string) TaskResult {
-	return TaskResult{Name: name, State: Skipped}
+func skip(name, reason string) TaskResult {
+	return TaskResult{Name: name, State: Skipped, SkipReason: reason}
 }
 
 // runOne runs a single task and classifies its outcome
