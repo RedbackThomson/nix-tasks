@@ -3,7 +3,7 @@ package tui_test
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/tui"
@@ -57,28 +57,28 @@ func TestModelNavigation(t *testing.T) {
 	}
 
 	// Move down
-	newModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	newModel, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m := newModel.(tui.Model)
 	if m.Cursor() != 1 {
 		t.Errorf("expected cursor at 1 after down, got %d", m.Cursor())
 	}
 
 	// Move down again
-	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	newModel, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = newModel.(tui.Model)
 	if m.Cursor() != 2 {
 		t.Errorf("expected cursor at 2 after second down, got %d", m.Cursor())
 	}
 
 	// Can't move past the end
-	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	newModel, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
 	m = newModel.(tui.Model)
 	if m.Cursor() != 2 {
 		t.Errorf("expected cursor to stay at 2, got %d", m.Cursor())
 	}
 
 	// Move up
-	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	newModel, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 	m = newModel.(tui.Model)
 	if m.Cursor() != 1 {
 		t.Errorf("expected cursor at 1 after up, got %d", m.Cursor())
@@ -103,7 +103,7 @@ func TestModelModeSwitch(t *testing.T) {
 	}
 
 	// Switch to shell mode with tab
-	newModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyTab})
+	newModel, _ := model.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m := newModel.(tui.Model)
 	if m.CurrentMode() != tui.ShellMode {
 		t.Errorf("expected ShellMode after tab, got %v", m.CurrentMode())
@@ -115,7 +115,7 @@ func TestModelModeSwitch(t *testing.T) {
 	}
 
 	// Switch back to task mode
-	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	newModel, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = newModel.(tui.Model)
 	if m.CurrentMode() != tui.TaskMode {
 		t.Errorf("expected TaskMode after second tab, got %v", m.CurrentMode())
@@ -133,7 +133,7 @@ func TestModelView(t *testing.T) {
 	}
 
 	model := tui.NewModel(cfg, ".")
-	view := model.View()
+	view := model.View().Content
 
 	// Check that key elements are present
 	if view == "" {
@@ -168,14 +168,14 @@ func TestModelVimKeys(t *testing.T) {
 	model := tui.NewModel(cfg, ".")
 
 	// Test 'j' for down
-	newModel, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	newModel, _ := model.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	m := newModel.(tui.Model)
 	if m.Cursor() != 1 {
 		t.Errorf("expected cursor at 1 after 'j', got %d", m.Cursor())
 	}
 
 	// Test 'k' for up
-	newModel, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	newModel, _ = m.Update(tea.KeyPressMsg{Code: 'k', Text: "k"})
 	m = newModel.(tui.Model)
 	if m.Cursor() != 0 {
 		t.Errorf("expected cursor at 0 after 'k', got %d", m.Cursor())
