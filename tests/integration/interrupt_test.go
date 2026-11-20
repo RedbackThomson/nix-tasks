@@ -36,7 +36,7 @@ func startNixTasks(t *testing.T, binary, logDir string, args ...string) (*exec.C
 	t.Helper()
 	cmd := exec.Command(binary, args...)
 	cmd.Dir = logDir
-	cmd.Env = append(cmd.Environ(), "NIX_TASKS_CACHE_DIR="+t.TempDir(), "NIX_TASKS_TEST_LOG_DIR="+logDir)
+	cmd.Env = append(testEnviron(), "NIX_TASKS_CACHE_DIR="+t.TempDir(), "NIX_TASKS_TEST_LOG_DIR="+logDir)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out

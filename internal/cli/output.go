@@ -12,6 +12,7 @@ const (
 	OutputTTY    = "tty"
 	OutputStream = "stream"
 	OutputPlain  = "plain"
+	OutputGitHub = "github"
 )
 
 // OutputMode resolves --output, -v and the environment to the mode run uses.
@@ -23,7 +24,11 @@ func resolveOutput(output string, verbose bool, getenv func(string) string, term
 	switch {
 	case output != "" && output != OutputAuto:
 		return output
-	case verbose || getenv("CI") != "":
+	case verbose:
+		return OutputStream
+	case getenv("GITHUB_ACTIONS") == "true":
+		return OutputGitHub
+	case getenv("CI") != "":
 		return OutputStream
 	case terminal:
 		return OutputTTY
@@ -31,7 +36,13 @@ func resolveOutput(output string, verbose bool, getenv func(string) string, term
 	return OutputPlain
 }
 
-// ColorEnabled resolves --color for the whole process.
+// ColorEnabled resolves --color for the whole process. The GitHub log viewer
+// renders colour although stdout is not a terminal, so github output is
+// coloured unless NO_COLOR or --color=never says otherwise.
 func (g *Globals) ColorEnabled() bool {
+	_, noColor := os.LookupEnv("NO_COLOR")
+	if ui.ColorMode(g.Color) == ui.ColorAuto && !noColor && g.OutputMode() == OutputGitHub {
+		return true
+	}
 	return ui.ResolveColor(ui.ColorMode(g.Color), os.Stdout)
 }

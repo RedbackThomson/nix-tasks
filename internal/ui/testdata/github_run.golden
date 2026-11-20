@@ -1,0 +1,47 @@
+nix-tasks: deploy · 7 tasks · -j 4
+::group::Preparing 2 environments (4.8s)
+evaluated nixTasksConfig (1.9s)
+environment for build, generate, lint: cached environment (0.1s)
+environment for generate-crossplane-provider-aws-ec2-managed-resources-crds, fmt-check: built with nix print-dev-env (2.6s)
+::endgroup::
+<1;34>━━ ● vet cached ━━<0>
+<2;96>▶ generate<0>
+<2;94>▶ lint<0>
+<2;95>▶ g-c-p-a-e-m-resources-crds = generate-crossplane-provider-aws-ec2-managed-resources-crds<0>
+<96>generate                   │<0> controller-gen object:headerFile=hack/boilerplate.go.txt
+<94>lint                       │<0> <1>apis/v1/types.go:42:2<0>: ineffectual assignment to err (ineffassign)
+<94>lint                       │<0> ::endgroup::
+<96>generate                   │<0> controller-gen crd paths=./apis/...
+<95>g-c-p-a-e-m-resources-crds │<0> wrote package/crds/ec2.yaml
+<1;31>━━ ✗ lint failed · exit 1 · 3.1s ━━<0>
+<1;32>━━ ✓ generate · 12.4s ━━<0>
+<1;32>━━ ✓ generate-crossplane-provider-aws-ec2-managed-resources-crds · 13.0s ━━<0>
+<2;34>▶ fmt-check<0>
+<34>fmt-check                  │<0> main.go
+<1;33>━━ ! fmt-check failed, allowed · exit 1 · 0.4s ━━<0>
+<2;36>▶ build<0>
+<36>build                      │<0> go build ./...
+<1;32>━━ ✓ build · 41.0s ━━<0>
+<90>━━ - deploy skipped · lint failed ━━<0>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
+<32>✓<0> generate · 12.4s
+<32>✓<0> generate-crossplane-provider-aws-ec2-managed-resources-crds · 13.0s
+::group::✗ lint · exit 1 · 3.1s
+::stop-commands::TOKEN
+<1>apis/v1/types.go:42:2<0>: ineffectual assignment to err (ineffassign)
+::endgroup::
+::TOKEN::
+::endgroup::
+<34>●<0> vet · cached
+::group::! fmt-check · failed, allowed · exit 1 · 0.4s
+::stop-commands::TOKEN
+main.go
+::TOKEN::
+::endgroup::
+<32>✓<0> build · 41.0s
+<90>-<0> deploy · skipped (lint failed)
+
+<31>✗<0> <31>1 failed<0> · <33>1 allowed failure<0> · 3 passed · 1 cached · 1 skipped · 56.2s
+::error title=nix-tasks%3A lint failed::lint exited with code 1 after 3.1s. Expand "✗ lint" in the Results section of the log.
+::warning title=nix-tasks%3A fmt-check failed (allowed)::fmt-check exited with code 1 after 0.4s; continueOnError is set, so the run continued.

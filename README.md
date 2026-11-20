@@ -275,7 +275,7 @@ Commands:
   completions      Generate shell completions
 
 Global Flags:
-  --output         How run shows tasks: auto (default), tty, stream or plain
+  --output         How run shows tasks: auto (default), tty, stream, plain or github
   -v, --verbose    Same as --output=stream (alias: --stream)
   --color          Colour output: auto (default), always or never
   --debug          Show debug information
@@ -412,7 +412,9 @@ where the output goes:
 - **`tty`, the default on a terminal**: a live region shows each running task
   with the last few lines of its output. Each task's result line is printed
   once, above the region, when it finishes.
-- **`stream`, the default in CI (`CI` is set); also `-v` or `--stream`**: every
+- **`github`, the default under GitHub Actions (`GITHUB_ACTIONS=true`)**: see
+  [GitHub Actions](#github-actions) below.
+- **`stream`, the default in other CI (`CI` is set); also `-v` or `--stream`**: every
   line of task output is printed as it arrives, prefixed with the task name,
   between a start line and a result line. Lines from parallel tasks never
   interleave.
@@ -422,10 +424,64 @@ where the output goes:
 
 An explicit `--output` mode wins over `-v` and the environment.
 
+##### GitHub Actions
+
+With `--output=github` (the default when `GITHUB_ACTIONS=true`), output keeps
+streaming live so failures show as they happen, and the per-task view comes
+at the end:
+
+```
+nix-tasks: deploy · 4 tasks · -j 4
+▸ Preparing 2 environments (4.8s)
+▶ generate
+▶ lint
+lint     │ apis/v1/types.go:42:2: ineffectual assignment to err (ineffassign)
+generate │ wrote package/crds/example.io_widgets.yaml
+━━ ✗ lint failed · exit 1 · 3.1s ━━
+━━ ✓ generate · 12.4s ━━
+━━ ● vet cached ━━
+━━ - deploy skipped · lint failed ━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ generate · 12.4s
+▸ ✗ lint · exit 1 · 3.1s
+● vet · cached
+- deploy · skipped (lint failed)
+
+✗ 1 failed · 1 passed · 1 cached · 1 skipped · 16.2s
+```
+
+- Each line of task output is prefixed with the task's
+  [display label](#display-labels), padded and coloured per task (never red
+  or green, which mean failure and success). A run of one task has no prefix.
+- Workflow commands in task output (`::error`, `::add-mask::`, `::group::`,
+  …) are printed without the prefix, so tools behave as they would without
+  nix-tasks. When a task finishes, nix-tasks resumes a `::stop-commands::`
+  it left open and closes groups it left open, and an `::endgroup::` with no
+  group of the task's own is shown as text, so tool output can't break the
+  folding. Values a tool masked are shown as `***` in the Results section
+  and the job summary.
+- Evaluating the configuration and preparing every task environment happens
+  before any task starts, folded into one group.
+- The Results section lists every task in dependency order. Failed and
+  allowed-failure tasks are folded groups holding their whole output, so it
+  can be read without other tasks mixed in.
+- Each failed task raises an error annotation and each allowed failure a
+  warning. GitHub shows 10 of each per step, counting the tools' own
+  annotations too; past that, nix-tasks' last one counts the rest.
+- When `GITHUB_STEP_SUMMARY` is set, a table of results and the last 50 lines
+  of each failure are appended to the job summary.
+- Output is coloured even though stdout is not a terminal, because the
+  GitHub log viewer renders colour; `NO_COLOR` or `--color=never` turns it off.
+
+[examples/github-actions](examples/github-actions) has a workflow for checking
+the rendering on GitHub, and
+[docs/github-actions-output.md](docs/github-actions-output.md) the design.
+
 ##### Display labels
 
-Streamed output prefixes each line with the task's display label, and the
-live display names running tasks by it; result lines and the summary always
+Streamed and GitHub output prefix each line with the task's display label,
+and the live display names running tasks by it; result lines and the summary always
 use the full name. The label is:
 
 1. the task's `label`, if set (for example `label = "ec2-crds";`);
@@ -490,8 +546,9 @@ If exactly one task fails because its command exited non-zero, `nix-tasks run`
 exits with that command's exit code (also with `--raw`); any other failure
 exits 1.
 
-Output is coloured only when stdout is a terminal and `NO_COLOR` is not set;
-`--color=always` or `--color=never` overrides that for any command.
+Output is coloured only when stdout is a terminal (or with `--output=github`)
+and `NO_COLOR` is not set; `--color=always` or `--color=never` overrides that
+for any command.
 
 Ctrl-C (or SIGTERM) stops the run: each running task's whole process tree is
 sent SIGTERM, anything still alive 5 seconds later is killed, and `nix-tasks
@@ -867,6 +924,7 @@ See the [examples](./examples) directory:
 - **[dynamic-tasks](./examples/dynamic-tasks)** - Tasks generated from a list of services
 - **[company-standards](./examples/company-standards)** - Company-wide standards flake template
 - **[app-using-standards](./examples/app-using-standards)** - Repository extending company standards
+- **[github-actions](./examples/github-actions)** - Pipeline and workflow for checking the GitHub Actions output
 
 ## Development
 

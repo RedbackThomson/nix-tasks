@@ -1,0 +1,23 @@
+# Copy to .github/workflows/ in a fork of nix-tasks and run it from the
+# Actions tab to see the github output: prefixed live output, the setup group,
+# the Results section, annotations and the job summary.
+name: nix-tasks GitHub output
+
+on:
+  workflow_dispatch:
+    inputs:
+      fail:
+        description: Make the lint task fail
+        type: boolean
+        default: true
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - name: Run the example pipeline
+        env:
+          FAIL_LINT: ${{ inputs.fail }}
+        run: nix run . -- run deploy --continue-on-error -f examples/github-actions

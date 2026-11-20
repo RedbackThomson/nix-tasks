@@ -1,0 +1,261 @@
+=== annotations pass through
+nix-tasks: lint build · 2 tasks · -j 4
+▶ lint
+::error file=apis/v1/types.go,line=42,col=2::ineffectual assignment to err
+::warning::deprecated flag
+  ::notice title=Coverage::81%
+lint  │ plain line
+━━ ✗ lint failed · exit 1 · 1.0s ━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
+::group::✗ lint · exit 1 · 1.0s
+::stop-commands::TOKEN
+::error file=apis/v1/types.go,line=42,col=2::ineffectual assignment to err
+::warning::deprecated flag
+  ::notice title=Coverage::81%
+plain line
+::TOKEN::
+::endgroup::
+✓ build · 1.0s
+
+✗ 1 failed · 1 passed · 0.0s
+::error title=nix-tasks%3A lint failed::lint exited with code 1 after 1.0s. Expand "✗ lint" in the Results section of the log.
+--- job summary
+### nix-tasks: lint build ✗
+
+| Task | Result | Duration | Notes |
+|------|--------|---------:|-------|
+| lint | ✗ failed | 1.0s | exit 1 |
+| build | ✓ passed | 1.0s |  |
+
+**1 failed** · 1 passed · 0.0s total
+
+<details><summary>✗ lint output</summary>
+
+```text
+::error file=apis/v1/types.go,line=42,col=2::ineffectual assignment to err
+::warning::deprecated flag
+  ::notice title=Coverage::81%
+plain line
+```
+
+</details>
+
+=== add-mask passes through and is redacted afterwards
+nix-tasks: lint build · 2 tasks · -j 4
+▶ lint
+lint  │ token s3cr3t before it is masked
+::add-mask::s3cr3t
+lint  │ token s3cr3t after it is masked
+━━ ✗ lint failed · exit 1 · 1.0s ━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
+::group::✗ lint · exit 1 · 1.0s
+::stop-commands::TOKEN
+token *** before it is masked
+::add-mask::***
+token *** after it is masked
+::TOKEN::
+::endgroup::
+✓ build · 1.0s
+
+✗ 1 failed · 1 passed · 0.0s
+::error title=nix-tasks%3A lint failed::lint exited with code 1 after 1.0s. Expand "✗ lint" in the Results section of the log.
+--- job summary
+### nix-tasks: lint build ✗
+
+| Task | Result | Duration | Notes |
+|------|--------|---------:|-------|
+| lint | ✗ failed | 1.0s | exit 1 |
+| build | ✓ passed | 1.0s |  |
+
+**1 failed** · 1 passed · 0.0s total
+
+<details><summary>✗ lint output</summary>
+
+```text
+token *** before it is masked
+::add-mask::***
+token *** after it is masked
+```
+
+</details>
+
+=== a tool group
+nix-tasks: lint build · 2 tasks · -j 4
+▶ lint
+::group::Lint details
+lint  │ checked 12 files
+::endgroup::
+lint  │ done
+━━ ✓ lint · 1.0s ━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ lint · 1.0s
+✓ build · 1.0s
+
+✓ 2 passed · 0.0s
+--- job summary
+### nix-tasks: lint build ✓
+
+| Task | Result | Duration | Notes |
+|------|--------|---------:|-------|
+| lint | ✓ passed | 1.0s |  |
+| build | ✓ passed | 1.0s |  |
+
+2 passed · 0.0s total
+
+=== an unclosed group is closed when the task finishes
+nix-tasks: lint build · 2 tasks · -j 4
+▶ lint
+::group::Lint details
+lint  │ checked 12 files
+::endgroup::
+━━ ✓ lint · 1.0s ━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ lint · 1.0s
+✓ build · 1.0s
+
+✓ 2 passed · 0.0s
+--- job summary
+### nix-tasks: lint build ✓
+
+| Task | Result | Duration | Notes |
+|------|--------|---------:|-------|
+| lint | ✓ passed | 1.0s |  |
+| build | ✓ passed | 1.0s |  |
+
+2 passed · 0.0s total
+
+=== an unresumed stop-commands is resumed when the task finishes
+nix-tasks: lint build · 2 tasks · -j 4
+▶ lint
+::stop-commands::tooltoken
+::endgroup::
+::error::not an annotation here
+::tooltoken::
+━━ ✗ lint failed · exit 1 · 1.0s ━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
+::group::✗ lint · exit 1 · 1.0s
+::stop-commands::TOKEN
+::stop-commands::tooltoken
+::endgroup::
+::error::not an annotation here
+::TOKEN::
+::endgroup::
+✓ build · 1.0s
+
+✗ 1 failed · 1 passed · 0.0s
+::error title=nix-tasks%3A lint failed::lint exited with code 1 after 1.0s. Expand "✗ lint" in the Results section of the log.
+--- job summary
+### nix-tasks: lint build ✗
+
+| Task | Result | Duration | Notes |
+|------|--------|---------:|-------|
+| lint | ✗ failed | 1.0s | exit 1 |
+| build | ✓ passed | 1.0s |  |
+
+**1 failed** · 1 passed · 0.0s total
+
+<details><summary>✗ lint output</summary>
+
+```text
+::stop-commands::tooltoken
+::endgroup::
+::error::not an annotation here
+```
+
+</details>
+
+=== a stray endgroup is shown as text
+nix-tasks: lint build · 2 tasks · -j 4
+▶ lint
+lint  │ ::endgroup::
+lint  │   ::endgroup::
+━━ ✓ lint · 1.0s ━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ lint · 1.0s
+✓ build · 1.0s
+
+✓ 2 passed · 0.0s
+--- job summary
+### nix-tasks: lint build ✓
+
+| Task | Result | Duration | Notes |
+|------|--------|---------:|-------|
+| lint | ✓ passed | 1.0s |  |
+| build | ✓ passed | 1.0s |  |
+
+2 passed · 0.0s total
+
+=== a stray endgroup in a run of one task
+nix-tasks: lint · 1 task · -j 4
+▶ lint
+plain line
+lint │ ::endgroup::
+::warning::kept
+━━ ✓ lint · 1.0s ━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ lint · 1.0s
+
+✓ 1 passed · 0.0s
+--- job summary
+### nix-tasks: lint ✓
+
+| Task | Result | Duration | Notes |
+|------|--------|---------:|-------|
+| lint | ✓ passed | 1.0s |  |
+
+1 passed · 0.0s total
+
+=== interleaved tasks
+nix-tasks: gen lint · 2 tasks · -j 4
+▶ gen
+▶ lint
+::group::Generate
+gen  │ wrote a.go
+::stop-commands::linttoken
+::warning::ignored by GitHub while lint has stopped commands
+━━ ✓ gen · 1.0s ━━
+::group::not a group while stopped
+lint │ lint line
+::linttoken::
+::endgroup::
+━━ ✗ lint failed · exit 1 · 1.0s ━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━ Results ━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ gen · 1.0s
+::group::✗ lint · exit 1 · 1.0s
+::stop-commands::TOKEN
+::stop-commands::linttoken
+::group::not a group while stopped
+lint line
+::TOKEN::
+::endgroup::
+
+✗ 1 failed · 1 passed · 0.0s
+::error title=nix-tasks%3A lint failed::lint exited with code 1 after 1.0s. Expand "✗ lint" in the Results section of the log.
+--- job summary
+### nix-tasks: gen lint ✗
+
+| Task | Result | Duration | Notes |
+|------|--------|---------:|-------|
+| gen | ✓ passed | 1.0s |  |
+| lint | ✗ failed | 1.0s | exit 1 |
+
+**1 failed** · 1 passed · 0.0s total
+
+<details><summary>✗ lint output</summary>
+
+```text
+::stop-commands::linttoken
+::group::not a group while stopped
+lint line
+```
+
+</details>
+
