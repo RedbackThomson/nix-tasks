@@ -67,12 +67,6 @@ func (c *RunCmd) Run(globals *Globals) error {
 	}
 	slog.Debug("task graph built")
 
-	// Determine failure strategy
-	strategy := runner.FailFast
-	if c.ContinueOnError {
-		strategy = runner.ContinueOnError
-	}
-
 	// Determine output mode
 	outputMode := runner.DetectOutputMode()
 	verbose := !c.Raw && (globals.Verbose || c.Stream || outputMode == runner.Streaming)
@@ -127,8 +121,8 @@ func (c *RunCmd) Run(globals *Globals) error {
 			FlakeRoot:  globals.FlakeRoot,
 		},
 		runner.ParallelExecutorOptions{
-			MaxJobs:  c.Jobs,
-			Strategy: strategy,
+			MaxJobs:         c.Jobs,
+			ContinueOnError: c.ContinueOnError,
 		},
 	)
 
