@@ -22,7 +22,6 @@ type RunCmd struct {
 	Task            string `arg:"" help:"Task name to run"`
 	Jobs            int    `short:"j" help:"Number of tasks to run at once (default: the number of CPUs available)"`
 	ContinueOnError bool   `help:"Continue running independent tasks on failure"`
-	Stream          bool   `help:"Stream task output in real-time (default in CI)"`
 	Force           bool   `help:"Force re-run tasks even if cached"`
 	NoCache         bool   `help:"Disable caching (don't read or write cache)"`
 	Raw             bool   `help:"Pipe task output directly to stdout/stderr with no decoration"`
@@ -118,7 +117,7 @@ func (c *RunCmd) newReporter(globals *Globals) ui.Reporter {
 	switch {
 	case c.Raw:
 		return ui.NewRawReporter(c.Task, os.Stdout, os.Stderr)
-	case globals.Verbose || c.Stream || os.Getenv("CI") != "":
+	case globals.Verbose || os.Getenv("CI") != "":
 		return ui.NewLineReporter(os.Stdout, true)
 	case ui.IsTerminal(os.Stdout):
 		return ui.NewProgressReporter(ui.ProgressOptions{Out: os.Stdout})
