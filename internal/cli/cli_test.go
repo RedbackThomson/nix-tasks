@@ -45,3 +45,25 @@ func TestColorFlag(t *testing.T) {
 		t.Error("expected an invalid --color value to be rejected")
 	}
 }
+
+func TestJobsMustBePositive(t *testing.T) {
+	for _, tt := range []struct {
+		jobs    string
+		wantErr bool
+	}{
+		{"1", false},
+		{"8", false},
+		{"0", true},
+		{"-2", true},
+	} {
+		var c cli.CLI
+		parser, err := kong.New(&c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = parser.Parse([]string{"run", "build", "-j", tt.jobs})
+		if (err != nil) != tt.wantErr {
+			t.Errorf("-j %s: error = %v, wantErr %v", tt.jobs, err, tt.wantErr)
+		}
+	}
+}
