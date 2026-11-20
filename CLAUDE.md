@@ -184,6 +184,8 @@ import (
     "github.com/charmbracelet/x/term"                // terminal size
     "github.com/charmbracelet/x/ansi"                // display width of styled text
     "github.com/bmatcuk/doublestar/v4"               // ** globs for task inputs
+    kongcompletion "github.com/jotaen/kong-completion" // shell completion from the Kong model
+    "github.com/posener/complete"                    // completion predictors
 )
 ```
 
@@ -417,7 +419,7 @@ type Globals struct {
 	Verbose bool   `short:"v" aliases:"stream" help:"Stream task output as it runs, prefixed with the task name (default in CI)"`
 	Color   string `enum:"auto,always,never" default:"auto" help:"Colour output: auto, always or never. auto colours a terminal unless NO_COLOR is set"`
 	Debug   bool   `help:"Show debug information including Nix commands"`
-	Flake   string `short:"f" help:"Path to flake" default:"."`
+	Flake   string `short:"f" completion-predictor:"dir" help:"Path to flake" default:"."`
 
 	// FlakeRoot is the local directory containing flake.nix, or empty when
 	// Flake is not a local path. Set by ResolveFlake.
@@ -444,7 +446,7 @@ type CLI struct {
 
 ```go
 type RunCmd struct {
-	Task            string `arg:"" help:"Task name to run"`
+	Task            string `arg:"" completion-predictor:"task" help:"Task name to run"`
 	Jobs            *int   `short:"j" help:"Number of tasks to run at once (default: $NIX_TASKS_JOBS, or else the number of CPUs available)"`
 	ContinueOnError bool   `help:"Continue running independent tasks on failure"`
 }

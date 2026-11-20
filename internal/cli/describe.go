@@ -16,7 +16,7 @@ import (
 
 // DescribeCmd shows task details
 type DescribeCmd struct {
-	Task string `arg:"" help:"Task name to describe"`
+	Task string `arg:"" completion-predictor:"task" help:"Task name to describe"`
 }
 
 // Run executes the describe command

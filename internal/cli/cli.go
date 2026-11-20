@@ -5,7 +5,7 @@ type Globals struct {
 	Verbose bool   `short:"v" aliases:"stream" help:"Stream task output as it runs, prefixed with the task name (default in CI)"`
 	Color   string `enum:"auto,always,never" default:"auto" help:"Colour output: auto, always or never. auto colours a terminal unless NO_COLOR is set"`
 	Debug   bool   `help:"Show debug information including Nix commands"`
-	Flake   string `short:"f" help:"Path to flake" default:"."`
+	Flake   string `short:"f" completion-predictor:"dir" help:"Path to flake" default:"."`
 
 	// FlakeRoot is the local directory containing flake.nix, or empty when
 	// Flake is not a local path. Set by ResolveFlake.

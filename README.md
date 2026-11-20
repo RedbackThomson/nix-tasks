@@ -505,6 +505,15 @@ $ nix-tasks completions zsh >> ~/.zshrc
 $ nix-tasks completions fish > ~/.config/fish/completions/nix-tasks.fish
 ```
 
+The scripts only pass the command line to `nix-tasks`, which completes it
+from its own CLI definition (with
+[kong-completion](https://github.com/jotaen/kong-completion)), so every
+command, flag and flag value is covered and the scripts never go stale. Task
+and dev shell names are read from `nix-tasks list --names` for the flake given
+with `-f` (or the current directory), which evaluates the flake on each TAB;
+`-f` itself completes directories. The Nix package installs all three
+scripts. In zsh, run `compinit` before adding the script to `~/.zshrc`.
+
 ### Defining Tasks
 
 Task and dev shell names can contain any character except `"`, which `nix`

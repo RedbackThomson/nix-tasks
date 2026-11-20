@@ -13,11 +13,14 @@ import (
 
 func main() {
 	var rootCmd cli.CLI
-	ctx := kong.Parse(&rootCmd,
+	parser := kong.Must(&rootCmd,
 		kong.Name("nix-tasks"),
 		kong.Description("Nix-based task runner"),
 		kong.UsageOnError(),
 	)
+	cli.Complete(parser)
+	ctx, parseErr := parser.Parse(os.Args[1:])
+	parser.FatalIfErrorf(parseErr)
 
 	if rootCmd.Globals.Debug {
 		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{

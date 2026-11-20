@@ -17,7 +17,7 @@ import (
 
 // ShellCmd enters a development shell
 type ShellCmd struct {
-	Name    string `arg:"" optional:"" help:"Shell name (default: default)"`
+	Name    string `arg:"" optional:"" completion-predictor:"shell" help:"Shell name (default: default)"`
 	Command string `short:"c" help:"Command to run in the shell instead of interactive mode"`
 }
 
