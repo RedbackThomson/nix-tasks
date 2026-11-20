@@ -32,12 +32,10 @@ rec {
   #   target      - The Make target to run
   #   makefile    - Path to Makefile (default: "Makefile")
   #   description - Task description (auto-generated if not provided)
-  #   makeFlags   - Additional flags to pass to make
-  #   env         - Environment variables for the make command
-  #   deps        - Additional package dependencies
-  #   depends     - Task dependencies
-  #   workingDir  - Working directory for make
-  #   continueOnError - Whether to continue on failure
+  #   makeFlags   - Additional arguments to pass to make, one per element
+  #
+  # Any other task field (deps, depends, env, workingDir, ...) is passed
+  # through to mkTask. make comes from stdenv, so it needs no package entry.
   #
   # Returns a task definition
   mkMakeTask = {
@@ -45,32 +43,17 @@ rec {
     makefile ? "Makefile",
     description ? null,
     makeFlags ? [],
-    env ? {},
-    deps ? [],
-    depends ? [],
-    workingDir ? null,
-    continueOnError ? false,
     ...
   }@args:
     let
-      desc = if description != null
-        then description
-        else "Make target: ${target}";
-
-      flagsStr = lib.concatStringsSep " " makeFlags;
-      makeCmd = "make" +
-        lib.optionalString (makefile != "Makefile") " -f ${makefile}" +
-        lib.optionalString (flagsStr != "") " ${flagsStr}" +
-        " ${target}";
-    in builders.mkTask ({
-      description = desc;
-      deps = [ "gnumake" ] ++ deps;
-      inherit depends workingDir continueOnError env;
-      commands = [ makeCmd ];
-    } // (builtins.removeAttrs args [
-      "target" "makefile" "description" "makeFlags" "env"
-      "deps" "depends" "workingDir" "continueOnError"
-    ]));
+      makeArgs = [ "make" ]
+        ++ lib.optionals (makefile != "Makefile") [ "-f" makefile ]
+        ++ makeFlags
+        ++ [ target ];
+    in builders.mkTask ((builtins.removeAttrs args [ "target" "makefile" "makeFlags" ]) // {
+      description = if description != null then description else "Make target: ${target}";
+      commands = [ (lib.escapeShellArgs makeArgs) ];
+    });
 
   # Import multiple Make targets as nix-tasks tasks
   #
@@ -78,9 +61,11 @@ rec {
   #   targets     - List of Make targets to import
   #   prefix      - Prefix for task names (default: "make")
   #   makefile    - Path to Makefile (default: "Makefile")
-  #   makeFlags   - Additional flags to pass to make
+  #   makeFlags   - Additional arguments to pass to make
   #   deps        - Additional package dependencies (applied to all)
+  #   depends     - Task dependencies (applied to all)
   #   env         - Environment variables (applied to all)
+  #   workingDir  - Working directory for make (applied to all)
   #
   # Returns an attribute set of tasks
   #
@@ -97,12 +82,14 @@ rec {
     makefile ? "Makefile",
     makeFlags ? [],
     deps ? [],
+    depends ? [],
     env ? {},
+    workingDir ? null,
   }:
     builtins.listToAttrs (map (target: {
       name = "${prefix}-${target}";
       value = mkMakeTask {
-        inherit target makefile makeFlags deps env;
+        inherit target makefile makeFlags deps depends env workingDir;
       };
     }) targets);
 }
