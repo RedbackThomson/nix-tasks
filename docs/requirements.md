@@ -101,8 +101,9 @@ outputs = { company-tasks, ... }: {
 **Inputs are opt-in for shell tasks.** A shell task is only cached when it
 declares `inputs`; without an explicit input set the fingerprint cannot detect
 source-file changes (e.g. switching git branches), so caching such a task
-would produce stale hits. Build tasks (`type = "build"`) are always cached —
-their identity comes from the Nix derivation itself.
+would produce stale hits. Build tasks (`type = "build"`) are never cached at
+the task level: Nix already caches the derivation, and only `nix build` can
+tell whether it changed.
 
 ### 10. Environment Management
 **Composition/Inheritance**

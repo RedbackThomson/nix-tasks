@@ -213,18 +213,18 @@ func TestComputeFingerprint(t *testing.T) {
 		}
 	})
 
-	t.Run("build task without inputs is still cached", func(t *testing.T) {
+	t.Run("build tasks are never cached", func(t *testing.T) {
 		task := config.Task{
-			Type:    config.TaskTypeBuild,
-			DrvPath: "/nix/store/abc123.drv",
+			Type:   config.TaskTypeBuild,
+			Inputs: []string{"**/*.go"},
 		}
 
 		fp, err := ComputeFingerprint(task, nil, "")
 		if err != nil {
 			t.Fatalf("ComputeFingerprint() error = %v", err)
 		}
-		if fp == nil {
-			t.Error("expected non-nil fingerprint for build task")
+		if fp != nil {
+			t.Errorf("expected nil fingerprint for build task, got %s", fp.Hash)
 		}
 	})
 

@@ -340,10 +340,13 @@ $ nix-tasks shell ci --command "go version"
 
 ### Caching
 
-nix-tasks caches build tasks, and shell tasks that declare `inputs`, based on:
+nix-tasks caches shell task results that declare `inputs`, based on:
 - Task commands and configuration
 - Package store paths (Nix handles this)
 - Input file contents
+
+Build tasks are never cached by nix-tasks; Nix's own store makes an unchanged
+derivation build instantly.
 
 ```bash
 # First run executes the task

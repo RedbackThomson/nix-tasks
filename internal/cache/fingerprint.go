@@ -21,16 +21,17 @@ type Fingerprint struct {
 // ComputeFingerprint calculates the fingerprint for a task.
 //
 // Returns nil (no caching) when:
-//   - task.NoCache is true, or
-//   - the task is not a build task and declares no inputs. Without an explicit
-//     input set, the fingerprint can't see source-file changes (e.g. switching
-//     git branches), so caching would produce stale hits. Build tasks are
-//     exempt — their identity comes from the Nix derivation.
+//   - task.NoCache is true,
+//   - the task is a build task: Nix already caches derivations, and only
+//     `nix build` can tell whether the derivation changed, or
+//   - the task declares no inputs. Without an explicit input set, the
+//     fingerprint can't see source-file changes (e.g. switching git branches),
+//     so caching would produce stale hits.
 func ComputeFingerprint(task config.Task, packages map[string]string, workDir string) (*Fingerprint, error) {
-	if task.NoCache {
+	if task.NoCache || task.Type == config.TaskTypeBuild {
 		return nil, nil
 	}
-	if task.Type != config.TaskTypeBuild && len(task.Inputs) == 0 {
+	if len(task.Inputs) == 0 {
 		return nil, nil
 	}
 
