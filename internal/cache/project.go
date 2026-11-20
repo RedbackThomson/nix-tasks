@@ -137,9 +137,9 @@ var gitRepositoryVars = []string{
 	"GIT_REPLACE_REF_BASE", "GIT_QUARANTINE_PATH",
 }
 
-// gitEnv returns environ without the variables that would make git use a
+// GitEnv returns environ without the variables that would make git use a
 // repository other than the one found from its -C directory.
-func gitEnv(environ []string) []string {
+func GitEnv(environ []string) []string {
 	return slices.DeleteFunc(slices.Clone(environ), func(kv string) bool {
 		name, _, _ := strings.Cut(kv, "=")
 		return slices.Contains(gitRepositoryVars, name) || strings.HasPrefix(name, "GIT_CONFIG")
@@ -148,7 +148,7 @@ func gitEnv(environ []string) []string {
 
 func git(ctx context.Context, dir string, args ...string) string {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = gitEnv(os.Environ())
+	cmd.Env = GitEnv(os.Environ())
 	out, err := cmd.Output()
 	if err != nil {
 		return ""
