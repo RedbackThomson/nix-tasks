@@ -67,3 +67,20 @@ func TestJobsMustBePositive(t *testing.T) {
 		}
 	}
 }
+
+func TestOutputFlag(t *testing.T) {
+	var c cli.CLI
+	parser, err := kong.New(&c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parser.Parse([]string{"run", "build", "--output=plain"}); err != nil {
+		t.Fatal(err)
+	}
+	if c.Output != "plain" {
+		t.Errorf("Output = %q", c.Output)
+	}
+	if _, err := parser.Parse([]string{"--output=fancy", "run", "build"}); err == nil {
+		t.Error("expected an invalid --output value to be rejected")
+	}
+}

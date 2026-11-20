@@ -2,7 +2,8 @@ package cli
 
 // Globals contains flags available to all commands
 type Globals struct {
-	Verbose bool   `short:"v" aliases:"stream" help:"Stream task output as it runs, prefixed with the task name (default in CI)"`
+	Verbose bool   `short:"v" aliases:"stream" help:"Same as --output=stream"`
+	Output  string `enum:"auto,tty,stream,plain" default:"auto" help:"How run shows tasks: tty (live display), stream (every output line, prefixed), plain (start and result lines) or auto: stream in CI, tty on a terminal, else plain"`
 	Color   string `enum:"auto,always,never" default:"auto" help:"Colour output: auto, always or never. auto colours a terminal unless NO_COLOR is set"`
 	Debug   bool   `help:"Show debug information including Nix commands"`
 	Flake   string `short:"f" completion-predictor:"dir" help:"Path to flake" default:"."`
