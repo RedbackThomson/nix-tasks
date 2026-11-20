@@ -27,7 +27,7 @@
               version = "0.1.0";
               description = "Build nix-tasks binary";
               src = ./.;
-              vendorHash = "sha256-oEpM5wn74SGj8NHB+9i6C4hi+xXOlVu/NW6u5YgWLV0=";
+              vendorHash = "sha256-CvMBl54ppkQP3OTL7hXk6JlZKsQTkZCMqSZNwKMqHG8=";
               CGO_ENABLED = "0";
               ldflags = [ "-s" "-w" ];
               nativeBuildInputs = [ pkgs.installShellFiles ];

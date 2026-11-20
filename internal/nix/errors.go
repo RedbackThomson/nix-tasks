@@ -21,21 +21,6 @@ func (e *EvalError) Unwrap() error {
 	return e.Err
 }
 
-// BuildError represents a Nix build error
-type BuildError struct {
-	Attribute string
-	Stderr    string
-	Err       error
-}
-
-func (e *BuildError) Error() string {
-	return fmt.Sprintf("nix build '%s' failed: %v\n%s", e.Attribute, e.Err, e.Stderr)
-}
-
-func (e *BuildError) Unwrap() error {
-	return e.Err
-}
-
 // IsMissingAttribute reports whether err is an evaluation failure caused by
 // the flake not providing the requested attribute at all, as opposed to an
 // error while evaluating it.

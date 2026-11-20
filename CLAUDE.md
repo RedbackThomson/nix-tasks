@@ -182,7 +182,6 @@ import (
     "github.com/charmbracelet/lipgloss"              // TUI styling
     "github.com/charmbracelet/x/term"                // terminal size
     "github.com/bmatcuk/doublestar/v4"               // ** globs for task inputs
-    "github.com/nix-community/go-nix/pkg/storepath"  // Nix store paths
 )
 ```
 

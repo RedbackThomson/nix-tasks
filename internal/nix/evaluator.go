@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os/exec"
 	"runtime"
-	"strings"
 	"time"
 )
 
@@ -90,33 +89,6 @@ func (e *Evaluator) Eval(ctx context.Context, attr string, result any) error {
 	}
 
 	return nil
-}
-
-// Build builds a flake attribute and returns the store path
-func (e *Evaluator) Build(ctx context.Context, attr string) (string, error) {
-	expr := fmt.Sprintf("%s#%s", e.flakePath, attr)
-	args := []string{"build", "--no-link", "--print-out-paths", expr}
-
-	if e.debug {
-		slog.Debug("running nix command", "cmd", "nix", "args", args)
-	}
-
-	cmd := exec.CommandContext(ctx, "nix", args...)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	start := time.Now()
-	if err := cmd.Run(); err != nil {
-		return "", &BuildError{
-			Attribute: attr,
-			Stderr:    stderr.String(),
-			Err:       err,
-		}
-	}
-	slog.Debug("nix build complete", "attr", attr, "duration", time.Since(start))
-
-	return strings.TrimSpace(stdout.String()), nil
 }
 
 // BuildCmd returns an exec.Cmd that builds every output of a flake attribute
