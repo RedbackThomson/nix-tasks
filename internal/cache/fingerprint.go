@@ -114,7 +114,7 @@ func hashInputFiles(h io.Writer, workDir string, patterns []string) error {
 		if workDir != "" {
 			rel, _ = filepath.Rel(workDir, file)
 		}
-		h.Write([]byte(rel))
+		_, _ = h.Write([]byte(rel))
 
 		// Write file content
 		f, err := os.Open(file)
@@ -122,7 +122,7 @@ func hashInputFiles(h io.Writer, workDir string, patterns []string) error {
 			continue
 		}
 		_, _ = io.Copy(h, f)
-		f.Close()
+		_ = f.Close()
 	}
 
 	return nil

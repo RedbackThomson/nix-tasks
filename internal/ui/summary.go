@@ -15,9 +15,10 @@ import (
 // failed task (when output returns it, i.e. it was not already shown), and the
 // totals line.
 func writeSummary(w io.Writer, graph *runner.TaskGraph, targets []string, results []runner.TaskResult, output func(name string) ([]byte, bool)) {
-	fmt.Fprintln(w)
+	var b strings.Builder
+	b.WriteString("\n")
 	for _, line := range resultTree(graph, targets, results) {
-		fmt.Fprintln(w, line)
+		b.WriteString(line + "\n")
 	}
 
 	for _, r := range results {
@@ -28,11 +29,12 @@ func writeSummary(w io.Writer, graph *runner.TaskGraph, targets []string, result
 		if !ok || (len(bytes.TrimSpace(out)) == 0 && errorDetail(r) == "") {
 			continue
 		}
-		fmt.Fprintf(w, "\n%s %s\n", StateIcon(r.State), r.Name+" output:")
-		writeFailure(w, r, out)
+		fmt.Fprintf(&b, "\n%s %s\n", StateIcon(r.State), r.Name+" output:")
+		writeFailure(&b, r, out)
 	}
 
-	fmt.Fprintf(w, "\n%s\n", completedLine(results))
+	fmt.Fprintf(&b, "\n%s\n", completedLine(results))
+	_, _ = io.WriteString(w, b.String())
 }
 
 // completedLine totals the run, counting cache hits apart from tasks that

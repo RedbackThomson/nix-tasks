@@ -183,7 +183,7 @@ func TestWriteFailure_LogOnlyWhenTruncated(t *testing.T) {
 	t.Setenv("TMPDIR", tmp)
 	res := runner.TaskResult{Name: "t", State: runner.Failed}
 
-	var short bytes.Buffer
+	var short strings.Builder
 	writeFailure(&short, res, []byte(strings.Repeat("line\n", FailedOutputTailLines)))
 	if entries, _ := os.ReadDir(tmp); len(entries) != 0 {
 		t.Errorf("output that fits the tail should not be logged, found %v", entries)
@@ -192,7 +192,7 @@ func TestWriteFailure_LogOnlyWhenTruncated(t *testing.T) {
 		t.Errorf("unexpected truncation notice:\n%s", short.String())
 	}
 
-	var long bytes.Buffer
+	var long strings.Builder
 	var full strings.Builder
 	for i := range FailedOutputTailLines + 10 {
 		fmt.Fprintf(&full, "line %d\n", i)
@@ -220,7 +220,7 @@ func TestWriteFailure_AllowedFailureNeverLogged(t *testing.T) {
 	t.Setenv("TMPDIR", tmp)
 	res := runner.TaskResult{Name: "t", State: runner.FailedAllowed}
 
-	var out bytes.Buffer
+	var out strings.Builder
 	writeFailure(&out, res, []byte(strings.Repeat("line\n", FailedOutputTailLines+10)))
 	if entries, _ := os.ReadDir(tmp); len(entries) != 0 {
 		t.Errorf("an allowed failure should not write a log, found %v", entries)

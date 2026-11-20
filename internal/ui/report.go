@@ -135,9 +135,9 @@ func errorDetail(r runner.TaskResult) string {
 // indented. When a real failure's output is longer than the tail, the full
 // output is saved to a temp file whose path is printed; an allowed failure
 // does not fail the run, so it leaves no files behind.
-func writeFailure(w io.Writer, r runner.TaskResult, output []byte) {
+func writeFailure(b *strings.Builder, r runner.TaskResult, output []byte) {
 	if detail := errorDetail(r); detail != "" {
-		fmt.Fprintf(w, "    %s\n", Failure("error: "+detail))
+		fmt.Fprintf(b, "    %s\n", Failure("error: "+detail))
 	}
 	lines := splitLines(output)
 	omitted := 0
@@ -146,17 +146,17 @@ func writeFailure(w io.Writer, r runner.TaskResult, output []byte) {
 		lines = lines[omitted:]
 	}
 	if omitted > 0 {
-		fmt.Fprintf(w, "    %s\n", Muted(fmt.Sprintf("... %d lines omitted ...", omitted)))
+		fmt.Fprintf(b, "    %s\n", Muted(fmt.Sprintf("... %d lines omitted ...", omitted)))
 	}
 	for _, line := range lines {
 		if !ColorEnabled() {
 			line = ansi.Strip(line)
 		}
-		fmt.Fprintf(w, "    %s\n", line)
+		fmt.Fprintf(b, "    %s\n", line)
 	}
 	if omitted > 0 && r.State == runner.Failed {
 		if path, err := saveLog(r.Name, output); err == nil {
-			fmt.Fprintf(w, "    %s\n", Muted("full output: "+path))
+			fmt.Fprintf(b, "    %s\n", Muted("full output: "+path))
 		}
 	}
 }

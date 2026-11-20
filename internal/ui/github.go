@@ -415,7 +415,7 @@ func (g *GitHubReporter) Summary(_ *runner.TaskGraph, _ []string, results []runn
 
 	if g.opts.SummaryPath != "" {
 		if err := g.writeJobSummary(results, elapsed); err != nil {
-			fmt.Fprintf(g.opts.Out, "nix-tasks: failed to write the job summary: %v\n", err)
+			_, _ = fmt.Fprintf(g.opts.Out, "nix-tasks: failed to write the job summary: %v\n", err)
 		}
 	}
 }
@@ -676,7 +676,7 @@ func eachLine(path string, emit func(line string)) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var s lineSplitter
 	fn := func(l []byte) { emit(string(l)) }
 	buf := make([]byte, 32*1024)
