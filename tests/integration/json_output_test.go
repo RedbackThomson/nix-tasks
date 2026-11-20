@@ -42,11 +42,17 @@ type jsonRun struct {
 }
 
 type jsonTask struct {
-	Name       string  `json:"name"`
-	Label      string  `json:"label"`
-	State      string  `json:"state"`
-	Cached     bool    `json:"cached"`
-	AfterHook  bool    `json:"afterHook"`
+	Name      string `json:"name"`
+	Label     string `json:"label"`
+	State     string `json:"state"`
+	Cached    bool   `json:"cached"`
+	AfterHook bool   `json:"afterHook"`
+	SavedMs   *int64 `json:"savedMs"`
+	Cache     *struct {
+		Enabled bool    `json:"enabled"`
+		Hit     bool    `json:"hit"`
+		Reason  *string `json:"reason"`
+	} `json:"cache"`
 	ExitCode   *int    `json:"exitCode"`
 	Error      *string `json:"error"`
 	SkipReason *string `json:"skipReason"`

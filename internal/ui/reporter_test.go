@@ -65,7 +65,7 @@ func scenarioGraph(t *testing.T) *runner.TaskGraph {
 func scenario(t *testing.T, r runner.Reporter) []runner.TaskResult {
 	t.Helper()
 	build := runner.TaskResult{Name: "build", State: runner.Succeeded, Start: t0, Duration: 2300 * time.Millisecond}
-	gen := runner.TaskResult{Name: "gen", State: runner.Succeeded, Cached: true}
+	gen := runner.TaskResult{Name: "gen", State: runner.Succeeded, Cached: true, Saved: 41 * time.Second}
 	test := runner.TaskResult{Name: "test", State: runner.Failed, Error: exitError(t, 2), Start: t0, Duration: 150 * time.Millisecond}
 	deploy := runner.TaskResult{Name: "deploy", State: runner.Skipped}
 
@@ -87,7 +87,7 @@ func TestLineReporter_Plain(t *testing.T) {
 	results := scenario(t, r)
 	r.Summary(scenarioGraph(t), []string{"deploy"}, results)
 
-	want := `✓ gen (cached)
+	want := `✓ gen (cached, 41s saved)
 ▶ build
 ▶ test
 ✗ test (150ms) (exit code 2)
@@ -96,14 +96,14 @@ func TestLineReporter_Plain(t *testing.T) {
 
 deploy - (skipped)
 ├─ build ✓ (2.3s)
-│  └─ gen ✓ (cached)
+│  └─ gen ✓ (cached, 41s saved)
 └─ test ✗ (150ms) (exit code 2)
 
 ✗ test output:
     running
     FAIL: thing
 
-Completed: 4 tasks (1 passed, 1 cached, 1 failed, 1 skipped)
+Completed: 4 tasks (1 passed, 1 cached (41s saved), 1 failed, 1 skipped)
 `
 	if got := out.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
@@ -117,7 +117,7 @@ func TestLineReporter_Stream(t *testing.T) {
 	r.Summary(scenarioGraph(t), []string{"deploy"}, results)
 
 	// Output already streamed is not repeated in the summary.
-	want := `✓ gen (cached)
+	want := `✓ gen (cached, 41s saved)
 ▶ build
 ▶ test
 [test] running
@@ -129,10 +129,10 @@ func TestLineReporter_Stream(t *testing.T) {
 
 deploy - (skipped)
 ├─ build ✓ (2.3s)
-│  └─ gen ✓ (cached)
+│  └─ gen ✓ (cached, 41s saved)
 └─ test ✗ (150ms) (exit code 2)
 
-Completed: 4 tasks (1 passed, 1 cached, 1 failed, 1 skipped)
+Completed: 4 tasks (1 passed, 1 cached (41s saved), 1 failed, 1 skipped)
 `
 	if got := out.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
@@ -175,6 +175,26 @@ func TestSummary_NonExitErrorShown(t *testing.T) {
 	r.Summary(testGraph(t, map[string][]string{"img": nil}), []string{"img"}, []runner.TaskResult{res})
 	if !strings.Contains(out.String(), "img output:\n    error: nix build failed: boom\n") {
 		t.Errorf("expected error in summary, got:\n%s", out.String())
+	}
+}
+
+func TestFormatResult_Cached(t *testing.T) {
+	SetColor(false)
+	if got := FormatResult(runner.TaskResult{Name: "gen", Cached: true}); got != "✓ gen (cached)" {
+		t.Errorf("without a saved time: %q", got)
+	}
+	if got := FormatResult(runner.TaskResult{Name: "gen", Cached: true, Saved: 4100 * time.Millisecond}); got != "✓ gen (cached, 4.1s saved)" {
+		t.Errorf("with a saved time: %q", got)
+	}
+}
+
+func TestRawReporter_TargetHitNamedOnStderr(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	r := NewRawReporter("gen", &stdout, &stderr)
+	r.TaskFinished(runner.TaskResult{Name: "dep", State: runner.Succeeded, Cached: true})
+	r.TaskFinished(runner.TaskResult{Name: "gen", State: runner.Succeeded, Cached: true})
+	if stdout.Len() != 0 || stderr.String() != "gen: cached\n" {
+		t.Errorf("stdout %q, stderr %q", stdout.String(), stderr.String())
 	}
 }
 

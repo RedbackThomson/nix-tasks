@@ -398,7 +398,7 @@ Every task in the run ends in one of these states:
 
 | Icon | State | Meaning |
 |------|-------|---------|
-| `✓` | passed | Succeeded (or was answered from the cache) |
+| `✓` | passed | Succeeded; `(cached, 41s saved)` when answered from the cache, which the summary counts as `cached` |
 | `✗` | failed | Exited non-zero; fails the run |
 | `!` | failed (allowed) | Failed, but has `continueOnError = true`; its output is shown |
 | `-` | skipped | Never started: a dependency did not succeed, or the run stopped |
@@ -576,20 +576,21 @@ label, or its abbreviation when the name is abbreviated.
 
 deploy - (skipped)
 ├─ build ✓ (2.3s)
-│  └─ generate ✓ (cached)
+│  └─ generate ✓ (cached, 12s saved)
 └─ test ✗ (4.1s) (exit code 2)
 
 ✗ test output:
     --- FAIL: TestThing
     FAIL
 
-Completed: 4 tasks (1 passed, 1 cached, 1 failed, 1 skipped)
+Completed: 4 tasks (1 passed, 1 cached (12s saved), 1 failed, 1 skipped)
 ```
 
 Every mode ends with the same summary:
 
 1. The dependency tree of each target, each task with its marker, duration
-   (or `(cached)`) and, for a failure, its exit code. A run of several
+   (or `(cached, 12s saved)` with the duration of the run the cache entry
+   came from) and, for a failure, its exit code. A run of several
    targets draws one tree per target, in the order given. A task needed by
    several others, or by several targets, is drawn once; later appearances
    are marked with `*`.
@@ -693,13 +694,19 @@ so it hits while the derivation is unchanged and runs again when it changes. It 
 `continueOnError` task failed. Only complete, successful runs are stored:
 failures, interrupted runs and runs during which an input file changed are
 not. After-hooks of a task still run when it is answered from the cache.
+With `--raw`, a target answered from the cache prints `<task>: cached` on
+stderr instead of its output.
 
 ```bash
 $ nix-tasks run generate
 ✓ generate (41.2s)
 
 $ nix-tasks run generate
-✓ generate (cached)
+✓ generate (cached, 41s saved)
+
+generate ✓ (cached, 41s saved)
+
+Completed: 1 tasks (1 cached (41s saved))
 
 $ nix-tasks cache stats           # entries, size, last hit and last run per task
 $ nix-tasks cache clean --task generate
