@@ -1062,7 +1062,6 @@ func TestCache_Stats(t *testing.T) {
 
 func TestMkGoTask_BuildsGoApplication(t *testing.T) {
 	skipIfNoNix(t)
-	t.Skip("known bug: build tasks run `nix build <drv>` without ^*, so the derivation is never built")
 	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "gotask")
 	workDir := t.TempDir()
@@ -1089,7 +1088,6 @@ func TestMkGoTask_BuildsGoApplication(t *testing.T) {
 
 func TestMkGoTask_BuildsBinaryToCorrectLocation(t *testing.T) {
 	skipIfNoNix(t)
-	t.Skip("known bug: build tasks run `nix build <drv>` without ^*, so the derivation is never built")
 	binary := nixTasksBinary(t)
 	flakePath := filepath.Join(testdataDir(t), "gotask")
 

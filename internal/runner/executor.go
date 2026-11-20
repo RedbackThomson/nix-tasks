@@ -1,12 +1,16 @@
 package runner
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,10 +23,10 @@ import (
 type ExecutorOptions struct {
 	Verbose    bool
 	Debug      bool
-	Force      bool   // Bypass cache (re-run even if cached)
-	NoCache    bool   // Don't read or write cache
-	ProjectKey string // Cache key for project
-	RawTarget  string // If non-empty, pipe this task's output directly (no decoration)
+	Force      bool                // Bypass cache (re-run even if cached)
+	NoCache    bool                // Don't read or write cache
+	ProjectKey string              // Cache key for project
+	RawTarget  string              // If non-empty, pipe this task's output directly (no decoration)
 	Progress   *ui.ProgressDisplay // Live progress display (nil unless Progress mode)
 }
 
@@ -88,7 +92,7 @@ func (e *Executor) RunTask(ctx context.Context, name string, task config.Task) e
 	case config.TaskTypeShell:
 		return e.runShellTask(ctx, name, task)
 	case config.TaskTypeBuild:
-		return e.runBuildTask(ctx, name, task)
+		return e.runBuildTask(ctx, name)
 	default:
 		return fmt.Errorf("unknown task type: %s", taskType)
 	}
@@ -129,32 +133,33 @@ func (e *Executor) runShellTask(ctx context.Context, name string, task config.Ta
 	return nil
 }
 
-// runBuildTask builds a Nix derivation and links outputs
-func (e *Executor) runBuildTask(ctx context.Context, name string, task config.Task) error {
-	if task.DrvPath == "" {
-		return fmt.Errorf("build task %s missing drvPath", name)
-	}
+// runBuildTask builds the task's nixTasksBuilds flake attribute and links
+// its outputs
+func (e *Executor) runBuildTask(ctx context.Context, name string) error {
+	attr := nix.NixTasksBuildsAttr(nix.CurrentSystem(), name)
+	cmd := e.nix.BuildCmd(ctx, attr)
 
-	if len(task.Outputs) == 0 {
-		return fmt.Errorf("build task %s has no outputs", name)
-	}
+	var stdout, stderr bytes.Buffer
+	_, taskStderr := e.taskOutput(name)
+	cmd.Stdout = &stdout
+	cmd.Stderr = io.MultiWriter(taskStderr, &stderr)
 
-	// Build the derivation
-	cmd := e.nix.BuildCmd(ctx, task.DrvPath)
-
-	// Configure output
-	cmd.Stdout, cmd.Stderr = e.taskOutput(name)
-
-	// Execute nix build
-	slog.Debug("starting nix build", "task", name, "drv", task.DrvPath)
+	slog.Debug("starting nix build", "task", name, "attr", attr)
 	start := time.Now()
 	if err := cmd.Run(); err != nil {
+		if strings.Contains(stderr.String(), "does not provide attribute") {
+			return fmt.Errorf("nix build failed: %w (does the flake expose nixTasksBuilds? add `nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);` to its outputs)", err)
+		}
 		return fmt.Errorf("nix build failed: %w", err)
 	}
 	slog.Debug("nix build exited", "task", name, "duration", time.Since(start))
 
-	// Link outputs to workspace
-	if err := e.linkBuildOutputs(name, task); err != nil {
+	outputs, err := nix.ParseBuildOutputs(stdout.Bytes())
+	if err != nil {
+		return err
+	}
+
+	if err := e.linkBuildOutputs(name, outputs); err != nil {
 		return fmt.Errorf("failed to link outputs: %w", err)
 	}
 
@@ -162,20 +167,19 @@ func (e *Executor) runBuildTask(ctx context.Context, name string, task config.Ta
 }
 
 // linkBuildOutputs creates symlinks in .nix-tasks/<taskname>/<output>
-func (e *Executor) linkBuildOutputs(name string, task config.Task) error {
+func (e *Executor) linkBuildOutputs(name string, outputs map[string]string) error {
 	taskDir := filepath.Join(".nix-tasks", name)
 	if err := os.MkdirAll(taskDir, 0755); err != nil {
 		return err
 	}
 
-	// Link each output
-	for outputName, outputPath := range task.Outputs {
+	for outputName, outputPath := range outputs {
 		linkPath := filepath.Join(taskDir, outputName)
 
-		// Remove existing link/file
-		os.Remove(linkPath)
+		if err := os.Remove(linkPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("failed to replace %s: %w", linkPath, err)
+		}
 
-		// Create symlink to store path
 		if err := os.Symlink(outputPath, linkPath); err != nil {
 			return fmt.Errorf("failed to link %s: %w", outputName, err)
 		}

@@ -16,7 +16,7 @@ type TaskType string
 const (
 	// TaskTypeShell executes shell commands in nix develop
 	TaskTypeShell TaskType = "shell"
-	// TaskTypeBuild builds a Nix derivation
+	// TaskTypeBuild builds the task's nixTasksBuilds flake attribute
 	TaskTypeBuild TaskType = "build"
 )
 
@@ -33,11 +33,6 @@ type Task struct {
 	Script     string            `json:"script,omitempty"`
 	Env        map[string]string `json:"env,omitempty"`
 	WorkingDir string            `json:"workingDir,omitempty"`
-
-	// Build task fields
-	DrvPath        string            `json:"drvPath,omitempty"`        // Derivation path for nix build
-	Outputs        map[string]string `json:"outputs,omitempty"`        // Output name -> store path
-	DerivationName string            `json:"derivationName,omitempty"` // Derivation name
 
 	// Cache control
 	NoCache bool `json:"noCache,omitempty"`

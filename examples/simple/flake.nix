@@ -76,6 +76,7 @@
       # Expose task configuration for nix-tasks CLI
       nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
       nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
+      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
 
       # Expose dev shells with nix-tasks available
       devShells = forAllSystems (system:

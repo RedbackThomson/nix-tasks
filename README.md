@@ -120,7 +120,7 @@ In your `flake.nix`:
       };
     in {
       # Expose nix-tasks config
-      inherit (config) nixTasksConfig nixTasksShells;
+      inherit (config) nixTasksConfig nixTasksShells nixTasksBuilds;
 
       # Expose nix-tasks CLI as a package and app (optional but recommended)
       packages.${system} = {
@@ -473,6 +473,12 @@ tasks.build = lib.mkGoTask {
 };
 ```
 
+`mkGoTask` creates a build task backed by `buildGoModule`. Build tasks are
+exposed as the flake output `nixTasksBuilds.<system>.<task>`; `nix-tasks run`
+builds that attribute and links each derivation output into
+`.nix-tasks/<task>/<output>` (e.g. `.nix-tasks/build/out/bin/myapp`) in the
+flake's root directory.
+
 #### mkDockerTask
 
 ```nix
@@ -618,6 +624,7 @@ Support multiple architectures:
     in {
       nixTasksConfig = forAllSystems (system: (mkConfig system).nixTasksConfig);
       nixTasksShells = forAllSystems (system: (mkConfig system).nixTasksShells);
+      nixTasksBuilds = forAllSystems (system: (mkConfig system).nixTasksBuilds);
       devShells = forAllSystems (system: (mkConfig system).devShells);
     };
 }

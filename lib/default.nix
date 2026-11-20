@@ -15,34 +15,12 @@ let
         config = validated;
       };
 
-      # Serialize tasks for JSON export
+      isBuild = task: (task.type or "shell") == "build";
+
+      # Build tasks are serialized without their derivation so that listing
+      # tasks never instantiates it; the CLI builds them via nixTasksBuilds.
       serializedTasks = lib.mapAttrs (name: task:
-        if task.type or "shell" == "build"
-        then
-          let
-            # Get output names from the derivation's outputs attribute
-            # This is a list like ["out"] or ["out" "bin" "dev"]
-            outputNames = task.derivation.outputs or ["out"];
-
-            # Convert to attrset: output name -> store path
-            outputs = lib.listToAttrs (map (outputName: {
-              name = outputName;
-              value = "${task.derivation.${outputName}}";
-            }) outputNames);
-          in task // {
-            # Store derivation path for nix build
-            drvPath = task.derivation.drvPath;
-
-            # Serialize all outputs
-            inherit outputs;
-
-            # Preserve metadata
-            derivationName = task.derivation.name or name;
-
-            # Remove derivation field (not JSON-serializable)
-            derivation = null;
-          }
-        else task
+        if isBuild task then builtins.removeAttrs task [ "derivation" ] else task
       ) validated.tasks;
     in {
       # Config for JSON export to Go
@@ -54,6 +32,10 @@ let
 
       # Generated shells for task execution
       nixTasksShells = shellResults.taskShells;
+
+      # Derivations of build tasks, built by the CLI as flake attributes
+      nixTasksBuilds = lib.mapAttrs (name: task: task.derivation)
+        (lib.filterAttrs (name: isBuild) validated.tasks);
 
       # User-facing dev shells
       devShells = shellResults.devShells;

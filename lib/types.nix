@@ -17,11 +17,9 @@
     continueOnError ? false,
     # Build task fields
     derivation ? null,
-    drvPath ? null,
-    derivationName ? null,
   }: {
     inherit type description deps depends after commands script env workingDir inputs outputs continueOnError;
-    inherit derivation drvPath derivationName;
+    inherit derivation;
   };
 
   # Shell type definition

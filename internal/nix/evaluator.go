@@ -119,16 +119,40 @@ func (e *Evaluator) Build(ctx context.Context, attr string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-// BuildCmd returns an exec.Cmd that builds a derivation path
-// Uses --no-link since we'll create our own symlinks in .nix-tasks/
-func (e *Evaluator) BuildCmd(ctx context.Context, drvPath string) *exec.Cmd {
-	args := []string{"build", "--no-link", drvPath}
+// BuildCmd returns an exec.Cmd that builds every output of a flake attribute
+// and prints them as JSON on stdout (see ParseBuildOutputs). --no-link because
+// the caller creates its own links under .nix-tasks/.
+func (e *Evaluator) BuildCmd(ctx context.Context, attr string) *exec.Cmd {
+	expr := fmt.Sprintf("%s#%s^*", e.flakePath, attr)
+	args := []string{"build", expr, "--no-link", "--json"}
 
 	if e.debug {
 		slog.Debug("running nix command", "cmd", "nix", "args", args)
 	}
 
 	return exec.CommandContext(ctx, "nix", args...)
+}
+
+// ParseBuildOutputs parses `nix build --json` output into a map of output
+// name to store path.
+func ParseBuildOutputs(data []byte) (map[string]string, error) {
+	var results []struct {
+		Outputs map[string]string `json:"outputs"`
+	}
+	if err := json.Unmarshal(data, &results); err != nil {
+		return nil, fmt.Errorf("failed to parse nix build output: %w", err)
+	}
+
+	outputs := make(map[string]string)
+	for _, r := range results {
+		for name, path := range r.Outputs {
+			outputs[name] = path
+		}
+	}
+	if len(outputs) == 0 {
+		return nil, fmt.Errorf("nix build reported no outputs")
+	}
+	return outputs, nil
 }
 
 // DevelopCmd returns an exec.Cmd that runs a command inside nix develop
