@@ -9,7 +9,9 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
 	"github.com/redbackthomson/nix-tasks/internal/runner"
@@ -315,4 +317,75 @@ func TestRun_Cache(t *testing.T) {
 	if ran := h.ran(); !slices.Equal(ran, []string{"ok", "bad", "bad"}) {
 		t.Errorf("ran %v", ran)
 	}
+}
+
+// assertProcessGone fails if the process whose pid the task wrote to file is
+// still alive.
+func assertProcessGone(t *testing.T, file string) {
+	t.Helper()
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("task did not record its child pid: %v", err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for syscall.Kill(pid, 0) == nil {
+		if time.Now().After(deadline) {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+			t.Fatalf("child process %d outlived its task", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestRun_FailFastInterruptsRunningTasks(t *testing.T) {
+	h := newHarness(t)
+	tasks := map[string]config.Task{
+		"bad":  sh("sleep 0.3; exit 1"),
+		"slow": sh("sleep 30 & echo $! > slow.pid; wait; echo slow >> ran.log"),
+		"all":  logged("all", "bad", "slow"),
+	}
+	start := time.Now()
+	results := h.run(context.Background(), tasks, "all")
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("fail-fast took %v; the running sibling should be stopped at once", elapsed)
+	}
+
+	assertStates(t, results, map[string]runner.TaskState{
+		"bad": runner.Failed, "slow": runner.Interrupted, "all": runner.Skipped,
+	})
+	if ran := h.ran(); len(ran) != 0 {
+		t.Errorf("ran %v", ran)
+	}
+	assertProcessGone(t, filepath.Join(h.dir, "slow.pid"))
+}
+
+func TestRun_Interrupted(t *testing.T) {
+	h := newHarness(t)
+	tasks := map[string]config.Task{
+		"slow":  sh("sleep 30 & echo $! > slow.pid; wait"),
+		"after": logged("after", "slow"),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(300*time.Millisecond, cancel)
+
+	start := time.Now()
+	results := h.run(ctx, tasks, "after")
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("interrupted run took %v", elapsed)
+	}
+
+	assertStates(t, results, map[string]runner.TaskState{"slow": runner.Interrupted, "after": runner.Skipped})
+	assertProcessGone(t, filepath.Join(h.dir, "slow.pid"))
+}
+
+func TestRun_CancelledBeforeStartSkipsEverything(t *testing.T) {
+	h := newHarness(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	results := h.run(ctx, map[string]config.Task{"a": logged("a"), "b": logged("b", "a")}, "b")
+	assertStates(t, results, map[string]runner.TaskState{"a": runner.Skipped, "b": runner.Skipped})
 }

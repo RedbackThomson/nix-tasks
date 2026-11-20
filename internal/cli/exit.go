@@ -25,6 +25,8 @@ func (e *ExitCodeError) Unwrap() error {
 // exitInterrupted is the conventional exit code for a run stopped by SIGINT.
 const exitInterrupted = 130
 
+var errInterrupted = &ExitCodeError{Code: exitInterrupted, Err: errors.New("interrupted")}
+
 // runExitCode picks the process exit code for a run: 0 when nothing failed.
 // Only an unambiguous failure (a single task whose process exited non-zero)
 // passes its code through, so callers and CI see e.g. a test runner's own
