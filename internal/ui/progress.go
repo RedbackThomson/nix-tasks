@@ -20,6 +20,8 @@ const (
 	TaskFailed
 	TaskCached
 	TaskSkipped
+	TaskFailedAllowed
+	TaskInterrupted
 )
 
 // spinnerFrames are the braille spinner characters
@@ -32,7 +34,6 @@ type taskState struct {
 	status    TaskStatus
 	startTime time.Time
 	duration  time.Duration
-	err       error
 	lines     *ringBuffer   // last N lines of output
 	fullBuf   *bytes.Buffer // complete output for post-run summary
 }
@@ -152,8 +153,8 @@ func (pd *ProgressDisplay) TaskStarted(name string) {
 	pd.notify()
 }
 
-// TaskFinished marks a task as complete
-func (pd *ProgressDisplay) TaskFinished(name string, err error, duration time.Duration, cached bool) {
+// TaskFinished marks a task as complete with a final status
+func (pd *ProgressDisplay) TaskFinished(name string, status TaskStatus, duration time.Duration) {
 	pd.mu.Lock()
 	ts, ok := pd.tasks[name]
 	pd.mu.Unlock()
@@ -161,14 +162,7 @@ func (pd *ProgressDisplay) TaskFinished(name string, err error, duration time.Du
 		return
 	}
 	ts.mu.Lock()
-	if cached {
-		ts.status = TaskCached
-	} else if err != nil {
-		ts.status = TaskFailed
-		ts.err = err
-	} else {
-		ts.status = TaskSuccess
-	}
+	ts.status = status
 	ts.duration = duration
 	ts.mu.Unlock()
 	pd.notify()
@@ -296,8 +290,16 @@ func (pd *ProgressDisplay) render() {
 			pd.renderTaskLine(&buf, Red("✗"), name, Gray(FormatDuration(ts.duration)))
 			rows++
 
+		case TaskFailedAllowed:
+			pd.renderTaskLine(&buf, Yellow("!"), name, Gray(FormatDuration(ts.duration)+" (failure allowed)"))
+			rows++
+
 		case TaskSkipped:
 			pd.renderTaskLine(&buf, Gray("-"), name, Gray("(skipped)"))
+			rows++
+
+		case TaskInterrupted:
+			pd.renderTaskLine(&buf, Yellow("⏹"), name, Gray("(interrupted)"))
 			rows++
 		}
 

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -81,7 +80,7 @@ func printTreeNode(graph *runner.TaskGraph, name string, depth int, isAfter bool
 
 	// Print failed task output inline when showing results
 	if results != nil {
-		if r, ok := results[name]; ok && !r.Success && r.Output != "" && !errors.Is(r.Error, context.Canceled) {
+		if r, ok := results[name]; ok && showsOutput(r) {
 			tail, tmpFile := tailAndSave(r.Name, r.Output)
 			for _, line := range strings.Split(strings.TrimRight(tail, "\n"), "\n") {
 				fmt.Printf("%s    %s\n", indent, line)
@@ -135,28 +134,25 @@ func formatGraphLabel(graph *runner.TaskGraph, name string, isAfter bool, duplic
 func formatResultLabel(name string, isAfter bool, duplicate bool, results map[string]runner.TaskResult) string {
 	r, ok := results[name]
 
-	// Status icon
-	status := ui.Green("✓")
-	if ok && !r.Success {
-		if errors.Is(r.Error, context.Canceled) {
-			status = ui.Gray("-")
-		} else {
-			status = ui.Red("✗")
-		}
-	}
-
-	label := status + " " + name
+	label := stateIcon(r.State) + " " + name
 
 	if isAfter {
 		label += " " + ui.Yellow("(after)")
 	}
 
-	// Duration or cached
 	if ok {
 		if r.Cached {
 			label += " " + ui.Gray("(cached)")
 		} else if r.Duration > 0 {
 			label += " " + ui.Gray(ui.FormatDuration(r.Duration))
+		}
+		switch r.State {
+		case runner.FailedAllowed:
+			label += " " + ui.Gray("(failure allowed)")
+		case runner.Skipped:
+			label += " " + ui.Gray("(skipped)")
+		case runner.Interrupted:
+			label += " " + ui.Gray("(interrupted)")
 		}
 	}
 

@@ -2,6 +2,8 @@ package runner
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/redbackthomson/nix-tasks/internal/config"
@@ -124,7 +126,7 @@ func (g *TaskGraph) ExecutionOrder(target string) ([]string, error) {
 	changed := true
 	for changed {
 		changed = false
-		for task := range inSet {
+		for _, task := range sortedKeys(inSet) {
 			for _, hook := range g.afterHooks[task] {
 				if !inSet[hook] {
 					collectDeps(hook)
@@ -152,62 +154,11 @@ func (g *TaskGraph) ExecutionOrder(target string) ([]string, error) {
 	// Visit from target first, then any remaining tasks in the set
 	// (after-hooks may not be reachable from target via edges alone)
 	visit(target)
-	for task := range inSet {
+	for _, task := range sortedKeys(inSet) {
 		visit(task)
 	}
 
 	return order, nil
-}
-
-// ParallelGroups returns tasks grouped by depth level for parallel execution
-// Tasks in the same group have no dependencies on each other and can run in parallel
-func (g *TaskGraph) ParallelGroups(target string) ([][]string, error) {
-	order, err := g.ExecutionOrder(target)
-	if err != nil {
-		return nil, err
-	}
-
-	// Build a set of tasks we care about
-	orderSet := make(map[string]bool)
-	for _, name := range order {
-		orderSet[name] = true
-	}
-
-	// Compute depth for each task
-	// Depth is the longest path from any task with no dependencies
-	depth := make(map[string]int)
-	for _, name := range order {
-		maxDepth := 0
-		for _, dep := range g.edges[name] {
-			// Only consider deps that are in our execution set
-			if orderSet[dep] {
-				if depth[dep] >= maxDepth {
-					maxDepth = depth[dep] + 1
-				}
-			}
-		}
-		depth[name] = maxDepth
-	}
-
-	// Find max depth
-	maxDepth := 0
-	for _, d := range depth {
-		if d > maxDepth {
-			maxDepth = d
-		}
-	}
-
-	// Group by depth
-	groups := make([][]string, maxDepth+1)
-	for i := range groups {
-		groups[i] = []string{}
-	}
-	for _, name := range order {
-		d := depth[name]
-		groups[d] = append(groups[d], name)
-	}
-
-	return groups, nil
 }
 
 // Dependencies returns the direct dependencies of a task
@@ -233,4 +184,8 @@ func (g *TaskGraph) Tasks() []string {
 func (g *TaskGraph) Task(name string) (config.Task, bool) {
 	task, ok := g.tasks[name]
 	return task, ok
+}
+
+func sortedKeys(m map[string]bool) []string {
+	return slices.Sorted(maps.Keys(m))
 }

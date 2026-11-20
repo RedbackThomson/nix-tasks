@@ -334,9 +334,27 @@ are relative to that root. `-f` accepts a relative path such as
 `-f examples/demo`; non-path references like `github:owner/repo` are passed to
 `nix` unchanged.
 
+Each task starts as soon as all of its dependencies have succeeded, up to `-j`
+tasks at a time. If a dependency fails, its dependents are skipped. By default
+the first failure stops the run: tasks still running are interrupted and the
+rest are skipped. With `--continue-on-error`, independent tasks keep running,
+but dependents of a failed task are still skipped. A task with
+`continueOnError = true` is different: its failure is allowed, its dependents
+run, and it does not fail the run.
+
+Every task in the run ends in one of these states:
+
+| Icon | State | Meaning |
+|------|-------|---------|
+| `✓` | passed | Succeeded (or was answered from the cache) |
+| `✗` | failed | Exited non-zero; fails the run |
+| `!` | failed (allowed) | Failed, but has `continueOnError = true`; its output is shown |
+| `-` | skipped | Never started: a dependency did not succeed, or the run stopped |
+| `⏹` | interrupted | Killed because the run was cancelled |
+
 If exactly one task fails because its command exited non-zero, `nix-tasks run`
 exits with that command's exit code (also with `--raw`); any other failure
-exits 1.
+exits 1. A run stopped by Ctrl-C or SIGTERM exits 130.
 
 ### Development Shells
 
@@ -362,7 +380,8 @@ nix-tasks caches shell task results that declare `inputs`, based on:
 - Package store paths (Nix handles this)
 - Input file contents
 
-Build tasks are never cached by nix-tasks; Nix's own store makes an unchanged
+Only successful runs are cached, so a failed task always runs again. Build
+tasks are never cached by nix-tasks; Nix's own store makes an unchanged
 derivation build instantly.
 
 ```bash
@@ -462,7 +481,7 @@ tasks.post-build-hook = lib.mkTask {
 };
 ```
 
-When you run `nix-tasks run build`, both `build` and `post-build-hook` will execute, in that order. After-hooks chain transitively — if another task hooks onto `post-build-hook`, it will also be included.
+When you run `nix-tasks run build`, both `build` and `post-build-hook` will execute, in that order; if `build` fails, the hook is skipped. After-hooks chain transitively — if another task hooks onto `post-build-hook`, it will also be included.
 
 #### Task with inputs (for caching)
 

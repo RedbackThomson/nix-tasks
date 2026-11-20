@@ -30,7 +30,8 @@ func TestRun_ExitCodePropagation(t *testing.T) {
 		{"failing task", []string{"run", "exit-four"}, 4},
 		{"failing task in raw mode", []string{"run", "--raw", "exit-four"}, 4},
 		{"failing dependency", []string{"run", "after-exit-four"}, 4},
-		{"multiple failures", []string{"run", "both-fail"}, 1},
+		// Fail-fast would interrupt the second failure, so let both finish.
+		{"multiple failures", []string{"run", "--continue-on-error", "both-fail"}, 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
