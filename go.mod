@@ -10,7 +10,6 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/term v0.2.1
-	github.com/nix-community/go-nix v0.0.0-20231219074122-93cb24a86856
 )
 
 require (

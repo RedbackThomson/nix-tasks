@@ -89,7 +89,7 @@ import (
 )
 ```
 
-Only use external packages when necessary: Kong for the CLI, Bubbletea and Lipgloss for the TUI, doublestar for `**` input globs, go-nix for store paths.
+Only use external packages when necessary: Kong for the CLI, Bubbletea and Lipgloss for the TUI and doublestar for `**` input globs.
 
 ### Error Handling
 
